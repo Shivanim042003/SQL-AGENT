@@ -1,0 +1,10 @@
+langgraph
+ollama
+anthropic
+python-dotenv
+pandas
+sqlalchemy
+psycopg2-binary
+pgvector
+fastapi
+uvicorn
