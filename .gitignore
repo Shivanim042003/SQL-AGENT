@@ -1,0 +1,13 @@
+.env
+*.pem
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+data/raw/**/*.csv
+data/raw/**/*.zip
+infra/pgdata/
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
