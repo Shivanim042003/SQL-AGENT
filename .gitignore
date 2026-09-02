@@ -1,13 +1,45 @@
+# =========================
+# Environment Variables
+# =========================
 .env
+
+
+# =========================
+# Secrets / Certificates
+# =========================
 *.pem
+
+
+# =========================
+# Python
+# =========================
 __pycache__/
-*.pyc
-.venv/
+*.py[cod]
 *.egg-info/
-data/raw/**/*.csv
-data/raw/**/*.zip
+.venv/
+
+
+# =========================
+# Raw Datasets
+# =========================
+data/raw/
+
+
+# =========================
+# PostgreSQL Docker Data
+# =========================
 infra/pgdata/
+
+
+# =========================
+# OS Files
+# =========================
 .DS_Store
+
+
+# =========================
+# VS Code
+# =========================
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
