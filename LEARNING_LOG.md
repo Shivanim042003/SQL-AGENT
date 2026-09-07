@@ -19,3 +19,18 @@ negatives on correct SQL) is therefore the more urgent gap to close before
 this pipeline can be trusted, not generator prompt-tuning, which has genuine
 diminishing returns at this point.
 
+
+**Further confirmation:** across 4 independent full-graph runs of "What is
+the conversion rate?", the generator reached MAX_RETRIES (2) and failed
+every time, producing a different wrong SQL shape on each of the ~12 total
+attempts (denominator-filtering, UNION with mismatched branches, inner JOIN
+collapsing numerator=denominator, cross join causing timeout). Simpler
+questions ("how many events are there?") succeed reliably and consistently
+across repeated runs. This sharpens the earlier "non-deterministic" framing:
+it is not that the system is unreliable in general -- it is specifically
+unreliable on this one class of subtle-denominator aggregate question, on
+this local model. All 4 failures were handled safely: no wrong answer was
+ever returned, and format_answer produced an honest failure message each
+time. Recommended next step: capture this exact question in the Phase D
+golden set as a known-hard case with an honest expected outcome, rather than
+continuing to manually re-run it.
