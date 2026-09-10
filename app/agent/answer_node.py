@@ -1,3 +1,27 @@
+from decimal import Decimal
+
+
+def _clean_result(value):
+    """
+    Convert database-specific numeric values into
+    clean Python values for the final response.
+    """
+
+    if isinstance(value, Decimal):
+        return float(value)
+
+    if isinstance(value, list):
+        return [_clean_result(item) for item in value]
+
+    if isinstance(value, dict):
+        return {
+            key: _clean_result(val)
+            for key, val in value.items()
+        }
+
+    return value
+
+
 def format_answer(state):
     """
     Produce the final human-readable answer
@@ -24,8 +48,10 @@ def format_answer(state):
 
         query_result = state.get("query_result")
 
+        clean_result = _clean_result(query_result)
+
         return {
-            "final_answer": f"Result: {query_result}"
+            "final_answer": f"Result: {clean_result}"
         }
 
     # --------------------------------------------------------

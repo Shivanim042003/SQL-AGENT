@@ -31,14 +31,154 @@ IMPORTANT RULES:
 5. Generate read-only SQL only.
 6. Generate exactly one SQL statement.
 7. Prefer efficient PostgreSQL queries.
-8. Avoid unnecessarily expensive correlated subqueries on large tables.
-9. Avoid unnecessary CTEs and unnecessary GROUP BY operations.
-10. When calculating metrics over millions of rows, prefer efficient
-    aggregations and indexed columns where possible.
+8. When querying millions of rows, prefer simple aggregation over
+   repeated row-by-row or session-by-session subqueries.
+9. Avoid unnecessarily expensive correlated subqueries.
+10. Avoid unnecessary CTEs and unnecessary GROUP BY operations.
 11. Do not introduce requirements that are not present in the business context.
-12. Respond ONLY with valid JSON in this format:
 
-{"sql": "SELECT ..."}
+
+QUESTION INTENT / OUTPUT RULES:
+
+1. Match the SQL output to exactly what the user asked for.
+
+2. If the user asks:
+   - "How many ..."
+   - "How many sessions ..."
+   - "How many events ..."
+   - "What is the count ..."
+   - "What is the number of ..."
+
+   return ONLY the requested count.
+
+3. Do NOT return additional numerator, denominator, percentage,
+   intermediate values, or diagnostic columns unless the user explicitly
+   asks for them.
+
+4. If the question asks for the number of sessions satisfying a condition,
+   return one COUNT(DISTINCT session_id) value with the appropriate filter.
+
+5. Example:
+
+   Question:
+       How many sessions contain a purchase event?
+
+   Correct:
+       SELECT COUNT(DISTINCT session_id)
+       FROM events
+       WHERE event_type = 'purchase';
+
+   Incorrect:
+       SELECT
+           COUNT(DISTINCT CASE
+               WHEN event_type = 'purchase' THEN session_id
+           END) AS numerator,
+           COUNT(DISTINCT session_id) AS denominator
+       FROM events;
+
+6. A ratio/percentage question is different from a count question.
+
+   For example:
+
+       "What is the conversion rate?"
+
+   requires both numerator and denominator.
+
+   But:
+
+       "How many sessions contain a purchase event?"
+
+   requires only the requested count.
+
+
+SESSION-LEVEL METRIC RULES:
+
+When a metric is defined in terms of DISTINCT sessions:
+
+1. Preserve the exact numerator and denominator from the business definition.
+
+2. If the metric is:
+
+       sessions satisfying condition / all sessions
+
+   prefer conditional aggregation:
+
+       COUNT(DISTINCT CASE
+           WHEN <condition> THEN session_id
+       END)
+       /
+       COUNT(DISTINCT session_id)
+
+   or PostgreSQL FILTER syntax when appropriate:
+
+       COUNT(DISTINCT session_id)
+       FILTER (WHERE <condition>)
+       /
+       COUNT(DISTINCT session_id)
+
+3. Do NOT use a correlated EXISTS subquery to determine whether a session
+   satisfies a condition when conditional aggregation can express the same
+   logic.
+
+4. Do NOT use CROSS JOIN or comma joins between large DISTINCT session
+   result sets to calculate a scalar ratio.
+
+5. Do NOT use UNION or UNION ALL to calculate the numerator and denominator
+   of a single metric.
+
+6. Do NOT use NOT IN against the large events table when conditional
+   aggregation can express the required logic.
+
+7. Do NOT add filters to the denominator unless the business definition
+   explicitly requires those filters.
+
+8. For a definition such as:
+
+       purchase sessions / all sessions
+
+   the numerator is:
+
+       sessions with at least one purchase
+
+   and the denominator is:
+
+       all distinct sessions
+
+   The denominator must NOT be restricted to cart or purchase events unless
+   the business definition explicitly says so.
+
+9. A query that executes successfully is NOT necessarily correct.
+   Preserve the exact business meaning of the metric.
+
+10. Prefer a single scan and conditional aggregation when it correctly
+    expresses the metric.
+
+
+IMPORTANT METRIC EXAMPLE:
+
+If the business definition says:
+
+    purchase sessions / all sessions
+
+then:
+
+    Numerator   = distinct sessions with at least one purchase
+    Denominator = all distinct sessions
+
+A preferred implementation is conceptually:
+
+    COUNT(DISTINCT CASE
+        WHEN event_type = 'purchase' THEN session_id
+    END)
+    * 100.0
+    / COUNT(DISTINCT session_id)
+
+Do not add cart events.
+Do not use a correlated EXISTS.
+Do not use a CROSS JOIN between large session sets.
+Do not use UNION ALL.
+Do not change the denominator.
+
 
 RETRY RULES:
 
@@ -48,29 +188,51 @@ The previous SQL attempt was rejected.
 
 You must:
 
-- Identify the actual problem with the previous SQL.
-- Address the execution error or valid critic feedback.
-- Follow the retrieved business definition exactly.
-- Do not introduce new requirements not present in the business context.
-- Prefer a simpler and more efficient query when the previous query timed out.
-- Do not blindly trust critic feedback if it conflicts with the retrieved
-  business context.
-- Generate a materially corrected query.
+1. Identify the actual problem with the previous SQL.
+2. Address the execution error or valid critic feedback.
+3. Follow the retrieved business definition exactly.
+4. Preserve the exact numerator and denominator when the metric requires them.
+5. Do not introduce new business requirements.
+6. If the previous query timed out, simplify the query rather than merely
+   rewriting the same expensive pattern.
+7. If the critic identifies a correlated subquery, do not use another
+   correlated subquery as the replacement.
+8. If the critic identifies an incorrect numerator, explicitly rebuild the
+   numerator from the business definition.
+9. If the critic identifies an incorrect denominator, explicitly rebuild the
+   denominator from the business definition.
+10. Do not blindly trust critic feedback if it conflicts with the retrieved
+    business context.
+11. Generate a materially corrected query.
+12. Prefer simple conditional aggregation for session-level ratios when
+    applicable.
+13. If the original question is a count question, return ONLY the requested
+    count even during a retry.
 
-IMPORTANT METRIC EXAMPLE:
 
-If the business definition says:
+ANTI-PATTERN CHECK BEFORE RETURNING SQL:
 
-purchase sessions / all sessions
+Before generating the final SQL, mentally verify:
 
-then:
+- Does the SQL answer exactly what the user asked?
+- If this is a count question, am I returning only the requested count?
+- If this is a ratio/percentage question, are the numerator and denominator
+  both required and correct?
+- Am I using a correlated EXISTS unnecessarily?
+- Am I creating a CROSS JOIN or Cartesian product?
+- Am I using UNION/UNION ALL for one scalar metric?
+- Am I using NOT IN against the large events table unnecessarily?
+- Did I accidentally filter the denominator?
+- Does the numerator exactly match the business definition?
+- Does the denominator exactly match the business definition?
+- Can conditional aggregation express this more simply?
 
-- Numerator = sessions with at least one purchase.
-- Denominator = all sessions.
-- Do NOT add unrelated requirements such as cart events unless explicitly
-  required by the business context.
+If any answer indicates an unnecessary expensive or semantically incorrect
+pattern, rewrite the query before returning it.
 
-Always prioritize the retrieved business context.
+Respond ONLY with valid JSON in this format:
+
+{"sql": "SELECT ..."}
 """
 
 
@@ -117,7 +279,6 @@ def parse_sql(text: str) -> str | None:
     )
 
     if match:
-
         try:
             json_match = match.group(0)
 
@@ -142,7 +303,6 @@ def parse_sql(text: str) -> str | None:
     )
 
     if match:
-
         sql = match.group(1).strip()
 
         if sql:
@@ -172,13 +332,10 @@ def generate_sql(state: AgentState) -> dict:
     # --------------------------------------------------------
 
     question = state.get("question", "")
-
     schema = state.get("schema", "")
-
     retrieved_context = state.get("retrieved_context", "")
 
     previous_sql = state.get("previous_sql")
-
     critique = state.get("critique")
 
     # --------------------------------------------------------
@@ -211,13 +368,38 @@ Generate the correct PostgreSQL SQL query.
 Remember:
 
 - Business context has priority for metric definitions.
+- Match the SQL output to exactly what the question asks.
+- If the question asks "how many" or asks for a count, return only that count.
+- Do not return numerator/denominator pairs unless the question asks for a
+  ratio, percentage, or both values.
+- For "How many sessions contain a purchase event?", return only
+  COUNT(DISTINCT session_id) for purchase sessions.
 - Use only tables and columns from the schema.
 - Do not invent business requirements.
 - Use all entities required by the metric definition.
 - Do not add filters that incorrectly change a denominator.
 - Prefer efficient SQL for large tables.
 - Avoid unnecessary CTEs, GROUP BY operations, and expensive patterns.
+- For session-level metrics, preserve the exact numerator and denominator
+  when the metric actually requires both.
+- Avoid correlated EXISTS when conditional aggregation can express the logic.
+- Avoid CROSS JOIN or Cartesian products between large session sets.
+- Avoid UNION or UNION ALL for a single scalar metric.
+- Avoid unnecessary NOT IN subqueries over the events table.
 - Generate exactly one read-only SQL statement.
+
+Before returning the SQL, verify:
+
+1. Does the SQL answer exactly what the user asked?
+2. If this is a count question, does the SQL return only the requested count?
+3. If this is a ratio/percentage question, are both numerator and denominator
+   correct?
+4. The numerator matches the business definition when a numerator is required.
+5. The denominator matches the business definition when a denominator is required.
+6. No unnecessary filters were added to the denominator.
+7. No expensive correlated subquery is being used unnecessarily.
+8. No Cartesian product is being created.
+9. The query is as simple as possible while remaining correct.
 
 Respond ONLY with JSON:
 
@@ -272,29 +454,119 @@ However, follow these rules carefully:
 
 2. Fix the actual problem in the previous SQL.
 
-3. If the feedback reports an execution error or timeout, generate a more
+3. Match the SQL output to exactly what the original question asks.
+
+4. If the original question asks "how many", "what is the count", or asks
+   for the number of something, return ONLY the requested count.
+
+5. Do NOT return additional numerator, denominator, percentage, intermediate
+   values, or diagnostic columns unless the original question explicitly
+   asks for them.
+
+6. If the question asks for a ratio or percentage, calculate the complete
+   ratio using the required numerator and denominator.
+
+7. If the feedback reports an execution error or timeout, generate a more
    efficient query.
 
-4. Do NOT introduce requirements that are not explicitly stated in the
+8. Do NOT introduce requirements that are not explicitly stated in the
    retrieved business context.
 
-5. Do NOT blindly follow feedback that conflicts with the business context.
+9. Do NOT blindly follow feedback that conflicts with the business context.
 
-6. Do not change the meaning of the metric.
+10. Do not change the meaning of the metric.
 
-7. Preserve the correct numerator and denominator defined by the business
-   context.
+11. Preserve the exact numerator and denominator when the metric requires
+    both.
 
-8. Prefer simpler and more efficient SQL.
+12. If the previous SQL used a correlated EXISTS unnecessarily, replace it
+    with a simpler set-based or conditional aggregation approach.
 
-9. Avoid unnecessarily expensive CTEs and GROUP BY operations.
+13. If the previous SQL used CROSS JOIN, comma joins between large result
+    sets, UNION/UNION ALL, or NOT IN unnecessarily, do not repeat that
+    pattern.
 
-10. Generate exactly one read-only PostgreSQL statement.
+14. If the previous SQL has an incorrect numerator, rebuild the numerator
+    directly from the business definition.
 
-IMPORTANT:
+15. If the previous SQL has an incorrect denominator, rebuild the denominator
+    directly from the business definition.
 
-The critic feedback is useful for identifying problems, but the retrieved
-business context remains the highest authority.
+16. Do not add filters to the denominator unless explicitly required.
+
+17. Prefer simple conditional aggregation for session-level ratios when
+    applicable.
+
+18. Prefer a single scan over the events table when it correctly expresses
+    the requested metric.
+
+19. Generate a materially corrected query rather than making superficial
+    changes to the previous SQL.
+
+
+IMPORTANT COUNT EXAMPLE:
+
+Question:
+
+    How many sessions contain a purchase event?
+
+Correct:
+
+    SELECT COUNT(DISTINCT session_id)
+    FROM events
+    WHERE event_type = 'purchase';
+
+Incorrect:
+
+    SELECT
+        COUNT(DISTINCT CASE
+            WHEN event_type = 'purchase' THEN session_id
+        END) AS numerator,
+        COUNT(DISTINCT session_id) AS denominator
+    FROM events;
+
+
+IMPORTANT RATIO EXAMPLE:
+
+If the business definition is:
+
+    purchase sessions / all sessions
+
+then:
+
+    Numerator   = distinct sessions with at least one purchase
+    Denominator = all distinct sessions
+
+A preferred implementation is:
+
+    COUNT(DISTINCT CASE
+        WHEN event_type = 'purchase' THEN session_id
+    END)
+    * 100.0
+    / COUNT(DISTINCT session_id)
+
+Do NOT:
+
+- use correlated EXISTS
+- use CROSS JOIN between large session sets
+- use UNION ALL
+- use NOT IN against the events table
+- restrict the denominator to cart/purchase events
+- change the metric definition
+
+
+Before returning the SQL, verify:
+
+1. Does the query answer exactly what the original question asks?
+2. If it is a count question, does it return exactly one requested count?
+3. If it is a ratio/percentage question, are both numerator and denominator
+   correct?
+4. Are both based on the retrieved business definition?
+5. Did I accidentally filter the denominator?
+6. Is there a correlated subquery that can be removed?
+7. Is there a Cartesian product?
+8. Is there unnecessary UNION/UNION ALL?
+9. Can conditional aggregation solve this more efficiently?
 
 Generate the corrected PostgreSQL SQL now.
 

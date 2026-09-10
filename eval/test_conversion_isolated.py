@@ -1,6 +1,15 @@
+import os
+import sys
 import psycopg2
-import config
 
+# Add project root to Python path
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)
+
+sys.path.insert(0, PROJECT_ROOT)
+
+import config
 
 conn = psycopg2.connect(config.READONLY_DATABASE_URL)
 cur = conn.cursor()

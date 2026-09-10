@@ -29,7 +29,8 @@ from app.agent.critic_node import critique_sql
 # Configuration
 # ------------------------------------------------------------
 
-MAX_ATTEMPTS = 2
+# Initial attempt + 2 retries = maximum 3 attempts
+MAX_ATTEMPTS = 3
 
 
 # ------------------------------------------------------------
@@ -62,7 +63,7 @@ def main():
     # --------------------------------------------------------
 
     state = {
-        "question": "How many events are there?",
+        "question": "What is the conversion rate?",
 
         "schema": "",
 
@@ -81,6 +82,8 @@ def main():
         "critique": "",
 
         "is_destructive": False,
+
+        "retry_count": 0,
 
         "final_answer": None
     }
@@ -297,6 +300,9 @@ def main():
             # overwrites state["sql"].
             state["previous_sql"] = state["sql"]
 
+            # Increment retry count for diagnostics.
+            state["retry_count"] = attempt
+
             print()
             print_line()
             print("SQL ATTEMPT REJECTED - PREPARING RETRY")
@@ -336,6 +342,10 @@ def main():
             print()
             print("FINAL CRITIQUE:")
             print(state["critique"])
+
+            print()
+            print("RETRY COUNT:")
+            print(state["retry_count"])
 
             return
 

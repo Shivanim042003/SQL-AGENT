@@ -17,6 +17,7 @@ GOLDEN_QUESTIONS = [
         "difficulty": "easy",
         "question": "How many events are there?",
         "expected_outcome": "success",
+        "expected_result": 2431963,
         "description": "Simple COUNT aggregation over the events table.",
     },
 
@@ -25,6 +26,7 @@ GOLDEN_QUESTIONS = [
         "difficulty": "easy",
         "question": "How many distinct sessions are there?",
         "expected_outcome": "success",
+        "expected_result": 681759,
         "description": "Simple COUNT DISTINCT aggregation.",
     },
 
@@ -33,6 +35,7 @@ GOLDEN_QUESTIONS = [
         "difficulty": "easy",
         "question": "How many purchase events are there?",
         "expected_outcome": "success",
+        "expected_result": 181759,
         "description": "COUNT aggregation with a simple filter.",
     },
 
@@ -46,6 +49,14 @@ GOLDEN_QUESTIONS = [
         "difficulty": "medium",
         "question": "How many events occurred for each event type?",
         "expected_outcome": "success",
+        "expected_result": {
+            "cancel": 125568,
+            "cart": 595994,
+            "department": 595323,
+            "home": 87712,
+            "product": 845607,
+            "purchase": 181759,
+        },
         "description": "GROUP BY aggregation over event_type.",
     },
 
@@ -54,6 +65,10 @@ GOLDEN_QUESTIONS = [
         "difficulty": "medium",
         "question": "Which event type occurs most frequently?",
         "expected_outcome": "success",
+        "expected_result": {
+            "event_type": "product",
+            "count": 845607,
+        },
         "description": "GROUP BY with ORDER BY and LIMIT.",
     },
 
@@ -62,6 +77,7 @@ GOLDEN_QUESTIONS = [
         "difficulty": "medium",
         "question": "How many sessions contain a purchase event?",
         "expected_outcome": "success",
+        "expected_result": 181759,
         "description": "COUNT DISTINCT session_id filtered by purchase.",
     },
 
@@ -75,6 +91,7 @@ GOLDEN_QUESTIONS = [
         "difficulty": "hard",
         "question": "What is the conversion rate?",
         "expected_outcome": "known_hard",
+        "expected_result": 26.6603007807744379,
         "description": (
             "Known difficult denominator-based aggregate question. "
             "Correct definition: sessions containing at least one purchase "
