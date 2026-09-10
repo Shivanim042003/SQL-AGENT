@@ -2,81 +2,26 @@ import json
 
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
+from app.core.error_types import ErrorType
 
 
 # ============================================================
-# CRITIC SYSTEM PROMPT
+# CRITIC PROMPT
 # ============================================================
 
 CRITIC_PROMPT = """
-You are a strict SQL reviewer for an AI SQL agent.
+You are a SQL critic for a PostgreSQL data-analyst agent.
 
 Your job is to determine whether the generated SQL correctly answers
-the user's question according to:
+the user's question.
 
-1. The user question
-2. The database schema
-3. The RETRIEVED BUSINESS CONTEXT
-4. The generated SQL
-5. The execution result or execution error
+The RETRIEVED BUSINESS CONTEXT is the authoritative source for
+business metric definitions.
 
+The database schema determines which tables and columns exist.
 
-============================================================
-MOST IMPORTANT RULE: BUSINESS CONTEXT IS THE SOURCE OF TRUTH
-============================================================
-
-The RETRIEVED BUSINESS CONTEXT is the authoritative source for:
-
-- metric definitions
-- numerator definitions
-- denominator definitions
-- business rules
-- required filters
-- entity definitions
-
-Do NOT replace the business definition with your general knowledge.
-
-Do NOT assume what a metric "normally" means.
-
-For example:
-
-If the business context defines conversion rate as:
-
-    sessions with at least one purchase
-    divided by
-    all sessions
-
-then you MUST NOT introduce a requirement involving:
-
-- cart events
-- checkout events
-- funnel steps
-- any other event
-
-unless that requirement is explicitly stated in the retrieved
-business context.
-
-
-============================================================
-DO NOT INVENT REQUIREMENTS
-============================================================
-
-Never introduce:
-
-- additional filters
-- additional event types
-- additional tables
-- additional joins
-- additional business conditions
-
-unless they are explicitly supported by:
-
-1. the user question
-2. the database schema
-3. the retrieved business context
-
-If the business context does not mention a condition,
-do not require that condition.
+Do NOT introduce business requirements that are not explicitly stated
+in the retrieved business context.
 
 
 ============================================================
@@ -225,18 +170,43 @@ or:
 
 def parse_llm_response(response_text: str) -> dict:
     """
-    Parse the LLM JSON response safely.
+    Parse the critic LLM JSON response safely.
+
+    Successful parsing returns:
+
+        {
+            "parsed": True,
+            "data": {...}
+        }
+
+    Failed parsing returns:
+
+        {
+            "parsed": False,
+            "error": "..."
+        }
+
+    Keeping parsing status separate from the actual critic response
+    prevents malformed LLM output from being mistaken for a legitimate
+    {"valid": false, ...} critic decision.
     """
+
+    # --------------------------------------------------------
+    # Empty response
+    # --------------------------------------------------------
 
     if not response_text:
         return {
-            "valid": False,
-            "feedback": "Critic returned an empty response."
+            "parsed": False,
+            "error": "Critic returned an empty response."
         }
 
     response_text = response_text.strip()
 
-    # Remove markdown code fences if the model adds them
+    # --------------------------------------------------------
+    # Remove markdown code fences
+    # --------------------------------------------------------
+
     if response_text.startswith("```"):
 
         lines = response_text.splitlines()
@@ -251,13 +221,24 @@ def parse_llm_response(response_text: str) -> dict:
 
         response_text = "\n".join(lines).strip()
 
+    # --------------------------------------------------------
+    # Parse JSON
+    # --------------------------------------------------------
+
     try:
-        return json.loads(response_text)
+
+        parsed = json.loads(response_text)
+
+        return {
+            "parsed": True,
+            "data": parsed
+        }
 
     except json.JSONDecodeError:
+
         return {
-            "valid": False,
-            "feedback": (
+            "parsed": False,
+            "error": (
                 "Critic returned invalid JSON. "
                 f"Raw response: {response_text}"
             )
@@ -281,38 +262,53 @@ def critique_sql(state: AgentState) -> dict:
     """
 
     # --------------------------------------------------------
-    # Get LLM client
-    # --------------------------------------------------------
-
-    client = get_llm_client()
-
-    # --------------------------------------------------------
     # Extract state
     # --------------------------------------------------------
 
     question = state.get("question", "")
-    schema = state.get("schema", "")
-    retrieved_context = state.get("retrieved_context", "")
 
-    sql = state.get("sql", "")
-    query_result = state.get("query_result", None)
-    execution_error = state.get("error", None)
+    schema = state.get("schema", "")
+
+    retrieved_context = state.get(
+        "retrieved_context",
+        ""
+    )
+
+    sql = state.get(
+        "sql",
+        ""
+    )
+
+    query_result = state.get(
+        "query_result",
+        None
+    )
+
+    execution_error = state.get(
+        "error",
+        None
+    )
 
     # --------------------------------------------------------
     # Basic validation
     # --------------------------------------------------------
 
     if not sql:
+
         return {
             "sql_valid": False,
-            "critique": "No SQL was generated."
+            "critique": "No SQL was generated.",
+            "error_type": ErrorType.SQL_GENERATION_ERROR.value,
         }
 
     # --------------------------------------------------------
     # OBJECTIVE EXECUTION FAILURE CHECK
     # --------------------------------------------------------
-    # If execution failed, SQL cannot be valid.
-    # No LLM reasoning is needed to determine that.
+    #
+    # If SQL execution failed, do not call the critic LLM.
+    #
+    # The executor has already classified the error.
+    # We preserve that classification here.
     # --------------------------------------------------------
 
     if execution_error:
@@ -321,7 +317,35 @@ def critique_sql(state: AgentState) -> dict:
             "sql_valid": False,
             "critique": (
                 f"SQL execution failed: {execution_error}"
-            )
+            ),
+            "error_type": state.get(
+                "error_type",
+                ErrorType.SQL_EXECUTION_ERROR.value
+            ),
+        }
+
+    # --------------------------------------------------------
+    # Get LLM client
+    # --------------------------------------------------------
+    #
+    # Keep client creation inside the try block.
+    #
+    # If the LLM client itself cannot be created, that is also
+    # a critic failure.
+    # --------------------------------------------------------
+
+    try:
+
+        client = get_llm_client()
+
+    except Exception as e:
+
+        return {
+            "sql_valid": False,
+            "critique": (
+                f"Critic LLM failed: {str(e)}"
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
         }
 
     # --------------------------------------------------------
@@ -400,7 +424,7 @@ IMPORTANT:
 Do not reject SQL unless you can identify the exact SQL expression
 that violates an explicit rule from the retrieved business context.
 
-Do not claim that two expressions are identical if one contains a:
+Do not claim that two SQL expressions are identical if one contains a:
 
 - FILTER
 - CASE
@@ -442,7 +466,10 @@ Return ONLY JSON.
 
         response_text = response.content
 
+        # ----------------------------------------------------
         # Debug output
+        # ----------------------------------------------------
+
         print()
         print("RAW CRITIC RESPONSE:")
         print(response_text)
@@ -453,14 +480,38 @@ Return ONLY JSON.
             "sql_valid": False,
             "critique": (
                 f"Critic LLM failed: {str(e)}"
-            )
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
+        }
+
+    # ========================================================
+    # PARSE RESPONSE
+    # ========================================================
+
+    parsed_result = parse_llm_response(response_text)
+
+    # --------------------------------------------------------
+    # Parsing failure
+    # --------------------------------------------------------
+
+    if not parsed_result.get("parsed", False):
+
+        return {
+            "sql_valid": False,
+            "critique": parsed_result.get(
+                "error",
+                "Critic returned invalid JSON."
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
         }
 
     # --------------------------------------------------------
-    # Parse response
+    # Get parsed data
     # --------------------------------------------------------
 
-    parsed = parse_llm_response(response_text)
+    parsed = parsed_result.get(
+        "data"
+    )
 
     # --------------------------------------------------------
     # Validate returned structure
@@ -470,12 +521,63 @@ Return ONLY JSON.
 
         return {
             "sql_valid": False,
-            "critique": "Critic returned an invalid response format."
+            "critique": (
+                "Critic returned an invalid response format."
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
         }
 
-    valid = bool(parsed.get("valid", False))
+    # --------------------------------------------------------
+    # Required field validation
+    # --------------------------------------------------------
+    #
+    # A legitimate critic response MUST contain "valid".
+    # --------------------------------------------------------
 
-    feedback = parsed.get("feedback", "")
+    if "valid" not in parsed:
+
+        return {
+            "sql_valid": False,
+            "critique": (
+                "Critic response is missing the required "
+                "'valid' field."
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
+        }
+
+    # --------------------------------------------------------
+    # Validate "valid" type
+    # --------------------------------------------------------
+    #
+    # We expect the LLM to return a JSON boolean:
+    #
+    #     true
+    #     false
+    #
+    # Do not silently accept arbitrary values.
+    # --------------------------------------------------------
+
+    if not isinstance(parsed["valid"], bool):
+
+        return {
+            "sql_valid": False,
+            "critique": (
+                "Critic response contains an invalid "
+                "'valid' field. Expected a boolean."
+            ),
+            "error_type": ErrorType.CRITIC_ERROR.value,
+        }
+
+    # --------------------------------------------------------
+    # Extract critic decision
+    # --------------------------------------------------------
+
+    valid = parsed["valid"]
+
+    feedback = parsed.get(
+        "feedback",
+        ""
+    )
 
     # --------------------------------------------------------
     # Normalize feedback
@@ -484,19 +586,16 @@ Return ONLY JSON.
     if feedback is None:
         feedback = ""
 
-    feedback = str(feedback).strip()
+    feedback = str(
+        feedback
+    ).strip()
 
     # --------------------------------------------------------
-    # Safety check
-    # --------------------------------------------------------
-    # Execution succeeded, so the LLM decides semantic correctness.
-    # --------------------------------------------------------
-
-    # --------------------------------------------------------
-    # Return state update
+    # Successful critic response
     # --------------------------------------------------------
 
     return {
         "sql_valid": valid,
-        "critique": feedback
+        "critique": feedback,
+        "error_type": ErrorType.NONE.value,
     }

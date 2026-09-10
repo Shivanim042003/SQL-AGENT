@@ -3,6 +3,7 @@ import re
 
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
+from app.core.error_types import ErrorType
 
 
 # ============================================================
@@ -342,7 +343,15 @@ def generate_sql(state: AgentState) -> dict:
     # Get LLM client
     # --------------------------------------------------------
 
-    client = get_llm_client()
+    try:
+        client = get_llm_client()
+
+    except Exception as e:
+        return {
+            "sql": None,
+            "error": f"SQL generation failed: {str(e)}",
+            "error_type": ErrorType.LLM_ERROR.value,
+        }
 
     # ========================================================
     # FIRST ATTEMPT
@@ -605,21 +614,36 @@ Respond ONLY with JSON:
 
         sql = parse_sql(response.content)
 
+        # ----------------------------------------------------
+        # SQL parsing failure
+        # ----------------------------------------------------
+
         if sql is None:
 
             return {
                 "sql": None,
-                "error": "Could not parse SQL from LLM response."
+                "error": "Could not parse SQL from LLM response.",
+                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
             }
+
+        # ----------------------------------------------------
+        # Successful SQL generation
+        # ----------------------------------------------------
 
         return {
             "sql": sql,
-            "error": None
+            "error": None,
+            "error_type": ErrorType.NONE.value,
         }
+
+    # --------------------------------------------------------
+    # LLM failure
+    # --------------------------------------------------------
 
     except Exception as e:
 
         return {
             "sql": None,
-            "error": f"SQL generation failed: {str(e)}"
+            "error": f"SQL generation failed: {str(e)}",
+            "error_type": ErrorType.LLM_ERROR.value,
         }

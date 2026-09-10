@@ -10,6 +10,8 @@ from app.agent.executor_node import execute_sql
 from app.agent.critic_node import critique_sql
 from app.agent.answer_node import format_answer
 
+from app.core.error_types import ErrorType
+
 
 # ============================================================
 # CONFIGURATION
@@ -19,76 +21,149 @@ MAX_RETRIES = 2
 
 
 # ============================================================
-# ROUTING FUNCTIONS
+# ROUTE AFTER INTENT
 # ============================================================
 
 def route_after_intent(state: AgentState):
     """
-    Decide whether the request is safe to continue.
+    Decide whether the request can continue into the
+    database pipeline.
     """
+
+    error_type = state.get(
+        "error_type",
+        ErrorType.NONE.value
+    )
+
+    # --------------------------------------------------------
+    # SAFETY BLOCK
+    # --------------------------------------------------------
+
+    if error_type == ErrorType.SAFETY_BLOCK.value:
+        return "format_answer"
+
+    # --------------------------------------------------------
+    # SAFETY-CHECK FAILURE
+    # --------------------------------------------------------
+    #
+    # If the safety check itself failed, do not continue.
+    # We cannot safely determine whether the request is safe.
+    # --------------------------------------------------------
+
+    if error_type == ErrorType.LLM_ERROR.value:
+        return "format_answer"
+
+    # --------------------------------------------------------
+    # Destructive flag fallback
+    # --------------------------------------------------------
 
     if state.get("is_destructive"):
         return "format_answer"
 
+    # --------------------------------------------------------
+    # Normal request
+    # --------------------------------------------------------
+
     return "load_schema"
 
 
+# ============================================================
+# ROUTE AFTER CRITIC
+# ============================================================
+
 def route_after_critic(state: AgentState):
     """
-    Decide whether SQL is accepted or needs another attempt.
+    Decide whether SQL is accepted, should be retried,
+    or should terminate.
     """
 
-    sql_valid = state.get("sql_valid", False)
-    error = state.get("error")
-    retry_count = state.get("retry_count", 0)
+    sql_valid = state.get(
+        "sql_valid",
+        False
+    )
 
-    # --------------------------------------------------------
+    error = state.get(
+        "error"
+    )
+
+    error_type = state.get(
+        "error_type",
+        ErrorType.NONE.value
+    )
+
+    retry_count = state.get(
+        "retry_count",
+        0
+    )
+
+    # ========================================================
     # SUCCESS
-    # --------------------------------------------------------
+    # ========================================================
 
     if sql_valid and not error:
+
         return "format_answer"
 
-    # --------------------------------------------------------
-    # RETRY LIMIT REACHED
-    # --------------------------------------------------------
+    # ========================================================
+    # NON-RETRYABLE ERRORS
+    # ========================================================
+    #
+    # These indicate infrastructure / protocol problems
+    # rather than a SQL problem that another SQL attempt
+    # can reliably fix.
+    # ========================================================
+
+    if error_type in {
+        ErrorType.CRITIC_ERROR.value,
+        ErrorType.SAFETY_BLOCK.value,
+        ErrorType.UNKNOWN_ERROR.value,
+    }:
+
+        return "format_answer"
+
+    # ========================================================
+    # RETRY LIMIT
+    # ========================================================
 
     if retry_count >= MAX_RETRIES:
+
         return "format_answer"
 
-    # --------------------------------------------------------
-    # PREPARE RETRY
-    # --------------------------------------------------------
+    # ========================================================
+    # RETRY
+    # ========================================================
 
     return "prepare_retry"
 
 
 # ============================================================
-# RETRY PREPARATION NODE
+# PREPARE RETRY
 # ============================================================
 
 def prepare_retry(state: AgentState) -> dict:
     """
-    Save the rejected SQL and increment retry count.
-
-    The next SQL generator receives:
-    - previous_sql
-    - critique
+    Save the rejected SQL and prepare another generation attempt.
     """
 
-    current_sql = state.get("sql")
+    current_sql = state.get(
+        "sql"
+    )
 
     return {
-        # Save rejected SQL
         "previous_sql": current_sql,
 
-        # Increment retry count
-        "retry_count": state.get("retry_count", 0) + 1,
+        "retry_count": (
+            state.get("retry_count", 0) + 1
+        ),
 
-        # Reset execution-specific state
         "sql": None,
+
         "query_result": None,
+
         "error": None,
+
+        "error_type": ErrorType.NONE.value,
+
         "sql_valid": False,
     }
 
@@ -99,10 +174,12 @@ def prepare_retry(state: AgentState) -> dict:
 
 def build_graph():
 
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(
+        AgentState
+    )
 
     # --------------------------------------------------------
-    # ADD NODES
+    # NODES
     # --------------------------------------------------------
 
     workflow.add_node(
@@ -155,7 +232,7 @@ def build_graph():
     )
 
     # --------------------------------------------------------
-    # SAFETY ROUTING
+    # INTENT ROUTING
     # --------------------------------------------------------
 
     workflow.add_conditional_edges(
@@ -214,7 +291,7 @@ def build_graph():
     )
 
     # --------------------------------------------------------
-    # FINAL ANSWER → END
+    # FINAL ANSWER
     # --------------------------------------------------------
 
     workflow.add_edge(

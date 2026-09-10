@@ -78,6 +78,8 @@ def ask_database(question: str) -> str:
 
         "error": None,
 
+        "error_type": "NONE",
+
         "sql_valid": False,
 
         "critique": "",
@@ -104,15 +106,19 @@ def ask_database(question: str) -> str:
         if final_answer:
 
             logger.info(
-                "request_id=%s | request_completed | retry_count=%s",
+                "request_id=%s | "
+                "request_completed | "
+                "retry_count=%s | "
+                "error_type=%s",
                 request_id,
                 result.get("retry_count", 0),
+                result.get("error_type", "NONE"),
             )
 
             return final_answer
 
         # -------------------------------------------------
-        # Execution failure
+        # Agent execution failure
         # -------------------------------------------------
 
         error = result.get("error")
@@ -120,8 +126,12 @@ def ask_database(question: str) -> str:
         if error:
 
             logger.error(
-                "request_id=%s | request_failed | error=%s",
+                "request_id=%s | "
+                "request_failed | "
+                "error_type=%s | "
+                "error=%s",
                 request_id,
+                result.get("error_type", "UNKNOWN_ERROR"),
                 error,
             )
 
@@ -138,9 +148,11 @@ def ask_database(question: str) -> str:
             logger.warning(
                 "request_id=%s | "
                 "request_failed_verification | "
+                "error_type=%s | "
                 "retry_count=%s | "
                 "critique=%s",
                 request_id,
+                result.get("error_type", "CRITIC_ERROR"),
                 result.get("retry_count", 0),
                 critique,
             )
@@ -155,8 +167,11 @@ def ask_database(question: str) -> str:
         # -------------------------------------------------
 
         logger.warning(
-            "request_id=%s | request_completed_without_answer",
+            "request_id=%s | "
+            "request_completed_without_answer | "
+            "error_type=%s",
             request_id,
+            result.get("error_type", "UNKNOWN_ERROR"),
         )
 
         return (
@@ -171,7 +186,9 @@ def ask_database(question: str) -> str:
     except Exception as e:
 
         logger.exception(
-            "request_id=%s | request_exception",
+            "request_id=%s | "
+            "request_exception | "
+            "error_type=UNKNOWN_ERROR",
             request_id,
         )
 
