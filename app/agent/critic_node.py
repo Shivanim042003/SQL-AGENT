@@ -3,6 +3,7 @@ import json
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
+from app.core.timing import measure_latency
 
 
 # ============================================================
@@ -259,15 +260,27 @@ def critique_sql(state: AgentState) -> dict:
     - Generated SQL
     - Execution result
     - Execution error
+
+    Latency tracking:
+
+    - latencies["critic"] contains cumulative critic latency.
+    - retry_latencies["attempt_X"]["critic"] contains critic latency
+      for the specific attempt.
     """
 
     # --------------------------------------------------------
     # Extract state
     # --------------------------------------------------------
 
-    question = state.get("question", "")
+    question = state.get(
+        "question",
+        ""
+    )
 
-    schema = state.get("schema", "")
+    schema = state.get(
+        "schema",
+        ""
+    )
 
     retrieved_context = state.get(
         "retrieved_context",
@@ -290,6 +303,42 @@ def critique_sql(state: AgentState) -> dict:
     )
 
     # --------------------------------------------------------
+    # Preserve cumulative latency
+    # --------------------------------------------------------
+
+    latencies = dict(
+        state.get(
+            "latencies",
+            {}
+        )
+    )
+
+    # --------------------------------------------------------
+    # Preserve per-attempt latency
+    # --------------------------------------------------------
+
+    retry_latencies = {
+        key: dict(value)
+        for key, value in state.get(
+            "retry_latencies",
+            {}
+        ).items()
+    }
+
+    # --------------------------------------------------------
+    # Current attempt
+    #
+    # 0 = initial attempt
+    # 1 = first retry
+    # 2 = second retry
+    # --------------------------------------------------------
+
+    attempt = state.get(
+        "retry_count",
+        0
+    )
+
+    # --------------------------------------------------------
     # Basic validation
     # --------------------------------------------------------
 
@@ -299,11 +348,12 @@ def critique_sql(state: AgentState) -> dict:
             "sql_valid": False,
             "critique": "No SQL was generated.",
             "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
     # OBJECTIVE EXECUTION FAILURE CHECK
-    # --------------------------------------------------------
     #
     # If SQL execution failed, do not call the critic LLM.
     #
@@ -322,16 +372,12 @@ def critique_sql(state: AgentState) -> dict:
                 "error_type",
                 ErrorType.SQL_EXECUTION_ERROR.value
             ),
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
     # Get LLM client
-    # --------------------------------------------------------
-    #
-    # Keep client creation inside the try block.
-    #
-    # If the LLM client itself cannot be created, that is also
-    # a critic failure.
     # --------------------------------------------------------
 
     try:
@@ -346,6 +392,8 @@ def critique_sql(state: AgentState) -> dict:
                 f"Critic LLM failed: {str(e)}"
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
@@ -454,15 +502,25 @@ Return ONLY JSON.
 
     try:
 
-        response = client.complete(
-            CRITIC_PROMPT,
-            [
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ]
-        )
+        # ----------------------------------------------------
+        # Measure cumulative + per-attempt critic latency
+        # ----------------------------------------------------
+
+        with measure_latency(
+            latencies,
+            "critic",
+            attempt=attempt,
+            retry_latencies=retry_latencies
+        ):
+            response = client.complete(
+                CRITIC_PROMPT,
+                [
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ]
+            )
 
         response_text = response.content
 
@@ -482,19 +540,26 @@ Return ONLY JSON.
                 f"Critic LLM failed: {str(e)}"
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # ========================================================
     # PARSE RESPONSE
     # ========================================================
 
-    parsed_result = parse_llm_response(response_text)
+    parsed_result = parse_llm_response(
+        response_text
+    )
 
     # --------------------------------------------------------
     # Parsing failure
     # --------------------------------------------------------
 
-    if not parsed_result.get("parsed", False):
+    if not parsed_result.get(
+        "parsed",
+        False
+    ):
 
         return {
             "sql_valid": False,
@@ -503,6 +568,8 @@ Return ONLY JSON.
                 "Critic returned invalid JSON."
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
@@ -517,7 +584,10 @@ Return ONLY JSON.
     # Validate returned structure
     # --------------------------------------------------------
 
-    if not isinstance(parsed, dict):
+    if not isinstance(
+        parsed,
+        dict
+    ):
 
         return {
             "sql_valid": False,
@@ -525,11 +595,12 @@ Return ONLY JSON.
                 "Critic returned an invalid response format."
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
     # Required field validation
-    # --------------------------------------------------------
     #
     # A legitimate critic response MUST contain "valid".
     # --------------------------------------------------------
@@ -543,11 +614,12 @@ Return ONLY JSON.
                 "'valid' field."
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
     # Validate "valid" type
-    # --------------------------------------------------------
     #
     # We expect the LLM to return a JSON boolean:
     #
@@ -557,7 +629,10 @@ Return ONLY JSON.
     # Do not silently accept arbitrary values.
     # --------------------------------------------------------
 
-    if not isinstance(parsed["valid"], bool):
+    if not isinstance(
+        parsed["valid"],
+        bool
+    ):
 
         return {
             "sql_valid": False,
@@ -566,13 +641,17 @@ Return ONLY JSON.
                 "'valid' field. Expected a boolean."
             ),
             "error_type": ErrorType.CRITIC_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
     # Extract critic decision
     # --------------------------------------------------------
 
-    valid = parsed["valid"]
+    valid = parsed[
+        "valid"
+    ]
 
     feedback = parsed.get(
         "feedback",
@@ -598,4 +677,6 @@ Return ONLY JSON.
         "sql_valid": valid,
         "critique": feedback,
         "error_type": ErrorType.NONE.value,
+        "latencies": latencies,
+        "retry_latencies": retry_latencies,
     }

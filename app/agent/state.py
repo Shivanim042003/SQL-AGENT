@@ -25,3 +25,19 @@ class AgentState(TypedDict):
     retry_count: int
 
     final_answer: str | None
+
+    # --------------------------------------------------------
+    # Cumulative latency for each stage
+    # --------------------------------------------------------
+
+    latencies: dict[str, float]
+
+    # --------------------------------------------------------
+    # Latency grouped by attempt
+    #
+    # attempt_0 = initial attempt
+    # attempt_1 = first retry
+    # attempt_2 = second retry
+    # --------------------------------------------------------
+
+    retry_latencies: dict[str, dict[str, float]]

@@ -1,30 +1,49 @@
 from app.agent.state import AgentState
 from app.retrieval.factory import get_embedding_client
 from app.retrieval.retriever import Retriever
+from app.core.timing import measure_latency
 
 
 def retrieve_context(state: AgentState) -> dict:
-    """Retrieve relevant business knowledge for the user's question."""
+    """
+    Retrieve relevant business knowledge for the user's question.
 
-    client = get_embedding_client()
+    The time spent generating the embedding and performing semantic
+    retrieval is recorded under the "retrieval" latency key.
+    """
 
-    retriever = Retriever(client)
-
-    results = retriever.search(
-        state["question"],
-        top_k=3
+    # Preserve latency measurements from previous nodes.
+    latencies = dict(
+        state.get("latencies", {})
     )
 
-    context_parts = []
+    # Measure the complete retrieval operation.
+    with measure_latency(
+        latencies,
+        "retrieval"
+    ):
+        client = get_embedding_client()
 
-    for result in results:
-        context_parts.append(
-            f"SOURCE: {result['source']}\n"
-            f"{result['content']}"
+        retriever = Retriever(client)
+
+        results = retriever.search(
+            state["question"],
+            top_k=3
         )
 
-    retrieved_context = "\n\n---\n\n".join(context_parts)
+        context_parts = []
+
+        for result in results:
+            context_parts.append(
+                f"SOURCE: {result['source']}\n"
+                f"{result['content']}"
+            )
+
+        retrieved_context = "\n\n---\n\n".join(
+            context_parts
+        )
 
     return {
-        "retrieved_context": retrieved_context
+        "retrieved_context": retrieved_context,
+        "latencies": latencies,
     }

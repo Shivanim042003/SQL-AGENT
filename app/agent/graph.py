@@ -10,7 +10,7 @@ from app.agent.executor_node import execute_sql
 from app.agent.critic_node import critique_sql
 from app.agent.answer_node import format_answer
 
-from app.core.error_types import ErrorType
+from app.core.timing import measure_latency
 
 
 # ============================================================
@@ -21,60 +21,23 @@ MAX_RETRIES = 2
 
 
 # ============================================================
-# ROUTE AFTER INTENT
+# ROUTING FUNCTIONS
 # ============================================================
 
 def route_after_intent(state: AgentState):
     """
-    Decide whether the request can continue into the
-    database pipeline.
+    Decide whether the request is safe to continue.
     """
-
-    error_type = state.get(
-        "error_type",
-        ErrorType.NONE.value
-    )
-
-    # --------------------------------------------------------
-    # SAFETY BLOCK
-    # --------------------------------------------------------
-
-    if error_type == ErrorType.SAFETY_BLOCK.value:
-        return "format_answer"
-
-    # --------------------------------------------------------
-    # SAFETY-CHECK FAILURE
-    # --------------------------------------------------------
-    #
-    # If the safety check itself failed, do not continue.
-    # We cannot safely determine whether the request is safe.
-    # --------------------------------------------------------
-
-    if error_type == ErrorType.LLM_ERROR.value:
-        return "format_answer"
-
-    # --------------------------------------------------------
-    # Destructive flag fallback
-    # --------------------------------------------------------
 
     if state.get("is_destructive"):
         return "format_answer"
 
-    # --------------------------------------------------------
-    # Normal request
-    # --------------------------------------------------------
-
     return "load_schema"
 
 
-# ============================================================
-# ROUTE AFTER CRITIC
-# ============================================================
-
 def route_after_critic(state: AgentState):
     """
-    Decide whether SQL is accepted, should be retried,
-    or should terminate.
+    Decide whether SQL is accepted or needs another attempt.
     """
 
     sql_valid = state.get(
@@ -88,7 +51,7 @@ def route_after_critic(state: AgentState):
 
     error_type = state.get(
         "error_type",
-        ErrorType.NONE.value
+        "NONE"
     )
 
     retry_count = state.get(
@@ -96,53 +59,47 @@ def route_after_critic(state: AgentState):
         0
     )
 
-    # ========================================================
+    # --------------------------------------------------------
     # SUCCESS
-    # ========================================================
+    # --------------------------------------------------------
 
     if sql_valid and not error:
-
         return "format_answer"
 
-    # ========================================================
-    # NON-RETRYABLE ERRORS
-    # ========================================================
-    #
-    # These indicate infrastructure / protocol problems
-    # rather than a SQL problem that another SQL attempt
-    # can reliably fix.
-    # ========================================================
+    # --------------------------------------------------------
+    # DO NOT RETRY CERTAIN FAILURES
+    # --------------------------------------------------------
 
     if error_type in {
-        ErrorType.CRITIC_ERROR.value,
-        ErrorType.SAFETY_BLOCK.value,
-        ErrorType.UNKNOWN_ERROR.value,
+        "CRITIC_ERROR",
+        "SAFETY_BLOCK",
+        "UNKNOWN_ERROR",
     }:
-
         return "format_answer"
 
-    # ========================================================
+    # --------------------------------------------------------
     # RETRY LIMIT
-    # ========================================================
+    # --------------------------------------------------------
 
     if retry_count >= MAX_RETRIES:
-
         return "format_answer"
 
-    # ========================================================
+    # --------------------------------------------------------
     # RETRY
-    # ========================================================
+    # --------------------------------------------------------
 
     return "prepare_retry"
 
 
 # ============================================================
-# PREPARE RETRY
+# RETRY PREPARATION
 # ============================================================
 
 def prepare_retry(state: AgentState) -> dict:
     """
-    Save the rejected SQL and prepare another generation attempt.
+    Save rejected SQL and increment retry count.
+
+    Existing latency measurements are preserved.
     """
 
     current_sql = state.get(
@@ -153,7 +110,11 @@ def prepare_retry(state: AgentState) -> dict:
         "previous_sql": current_sql,
 
         "retry_count": (
-            state.get("retry_count", 0) + 1
+            state.get(
+                "retry_count",
+                0
+            )
+            + 1
         ),
 
         "sql": None,
@@ -162,7 +123,7 @@ def prepare_retry(state: AgentState) -> dict:
 
         "error": None,
 
-        "error_type": ErrorType.NONE.value,
+        "error_type": "NONE",
 
         "sql_valid": False,
     }
@@ -232,7 +193,7 @@ def build_graph():
     )
 
     # --------------------------------------------------------
-    # INTENT ROUTING
+    # SAFETY ROUTING
     # --------------------------------------------------------
 
     workflow.add_conditional_edges(
@@ -299,10 +260,6 @@ def build_graph():
         END
     )
 
-    # --------------------------------------------------------
-    # COMPILE
-    # --------------------------------------------------------
-
     return workflow.compile()
 
 
@@ -311,3 +268,104 @@ def build_graph():
 # ============================================================
 
 agent_graph = build_graph()
+
+
+# ============================================================
+# TIMED AGENT INVOCATION
+# ============================================================
+
+def invoke_agent(initial_state: AgentState) -> dict:
+    """
+    Invoke the complete SQL agent.
+
+    Measures:
+
+        - individual stage latency
+        - cumulative retry latency
+        - total request latency
+    """
+
+    # --------------------------------------------------------
+    # Initial cumulative latency
+    # --------------------------------------------------------
+
+    latencies = dict(
+        initial_state.get(
+            "latencies",
+            {}
+        )
+    )
+
+    # --------------------------------------------------------
+    # Initial per-attempt latency
+    # --------------------------------------------------------
+
+    retry_latencies = {
+        key: dict(value)
+        for key, value in initial_state.get(
+            "retry_latencies",
+            {}
+        ).items()
+    }
+
+    # --------------------------------------------------------
+    # Initial state
+    # --------------------------------------------------------
+
+    start_state = {
+        **initial_state,
+
+        "latencies": latencies,
+
+        "retry_latencies": retry_latencies,
+    }
+
+    # --------------------------------------------------------
+    # Total request timer
+    # --------------------------------------------------------
+
+    with measure_latency(
+        latencies,
+        "total"
+    ):
+        result = agent_graph.invoke(
+            start_state
+        )
+
+    # --------------------------------------------------------
+    # Get latency data generated by graph
+    # --------------------------------------------------------
+
+    graph_latencies = dict(
+        result.get(
+            "latencies",
+            {}
+        )
+    )
+
+    graph_retry_latencies = {
+        key: dict(value)
+        for key, value in result.get(
+            "retry_latencies",
+            {}
+        ).items()
+    }
+
+    # --------------------------------------------------------
+    # Add actual end-to-end total
+    # --------------------------------------------------------
+
+    if "total" in latencies:
+        graph_latencies["total"] = latencies["total"]
+
+    # --------------------------------------------------------
+    # Final latency state
+    # --------------------------------------------------------
+
+    result["latencies"] = graph_latencies
+
+    result["retry_latencies"] = (
+        graph_retry_latencies
+    )
+
+    return result

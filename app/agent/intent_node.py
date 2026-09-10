@@ -3,6 +3,7 @@ import re
 
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
+from app.core.timing import measure_latency
 
 
 # ============================================================
@@ -137,7 +138,20 @@ def check_intent(state) -> dict:
     SQL pipeline.
 
     The request is therefore stopped and classified as LLM_ERROR.
+
+    Latency:
+
+    The time spent waiting for the safety LLM is recorded under
+    the "intent" latency key.
     """
+
+    # --------------------------------------------------------
+    # Existing latency state
+    # --------------------------------------------------------
+
+    latencies = dict(
+        state.get("latencies", {})
+    )
 
     # --------------------------------------------------------
     # Get LLM client
@@ -159,19 +173,26 @@ def check_intent(state) -> dict:
 
     # --------------------------------------------------------
     # Call LLM
+    #
+    # Only the actual LLM operation is timed here.
     # --------------------------------------------------------
 
     try:
 
-        response = client.complete(
-            DESTRUCTIVE_CHECK_PROMPT,
-            [
-                {
-                    "role": "user",
-                    "content": state["question"]
-                }
-            ]
-        )
+        with measure_latency(
+            latencies,
+            "intent"
+        ):
+
+            response = client.complete(
+                DESTRUCTIVE_CHECK_PROMPT,
+                [
+                    {
+                        "role": "user",
+                        "content": state["question"]
+                    }
+                ]
+            )
 
     except Exception as e:
 
@@ -181,6 +202,7 @@ def check_intent(state) -> dict:
                 f"Safety intent check failed: {str(e)}"
             ),
             "error_type": ErrorType.LLM_ERROR.value,
+            "latencies": latencies,
         }
 
     # --------------------------------------------------------
@@ -204,6 +226,7 @@ def check_intent(state) -> dict:
                 "an invalid response."
             ),
             "error_type": ErrorType.LLM_ERROR.value,
+            "latencies": latencies,
         }
 
     # --------------------------------------------------------
@@ -219,6 +242,7 @@ def check_intent(state) -> dict:
                 "for a destructive database operation."
             ),
             "error_type": ErrorType.SAFETY_BLOCK.value,
+            "latencies": latencies,
         }
 
     # --------------------------------------------------------
@@ -229,4 +253,5 @@ def check_intent(state) -> dict:
         "is_destructive": False,
         "error": None,
         "error_type": ErrorType.NONE.value,
+        "latencies": latencies,
     }

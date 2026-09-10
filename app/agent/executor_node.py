@@ -2,6 +2,7 @@ import psycopg2
 import config
 
 from app.core.error_types import ErrorType
+from app.core.timing import measure_latency
 
 
 def execute_sql(state):
@@ -14,23 +15,60 @@ def execute_sql(state):
         - SQL_EXECUTION_ERROR  -> known PostgreSQL/database error
         - UNKNOWN_ERROR        -> unexpected Python/runtime error
         - NONE                 -> successful execution
+
+    Latency:
+        - cumulative execution latency
+        - per-attempt execution latency
     """
+
+    # --------------------------------------------------------
+    # Preserve cumulative latency
+    # --------------------------------------------------------
+
+    latencies = dict(
+        state.get("latencies", {})
+    )
+
+    # --------------------------------------------------------
+    # Preserve per-attempt latency
+    # --------------------------------------------------------
+
+    retry_latencies = {
+        key: dict(value)
+        for key, value in state.get(
+            "retry_latencies",
+            {}
+        ).items()
+    }
+
+    # --------------------------------------------------------
+    # Current attempt
+    # --------------------------------------------------------
+
+    attempt = state.get(
+        "retry_count",
+        0
+    )
+
+    # --------------------------------------------------------
+    # Get SQL
+    # --------------------------------------------------------
 
     sql = state.get("sql")
 
-    # ---------------------------------------------------------
-    # 1. No SQL generated
-    # ---------------------------------------------------------
     if not sql:
         return {
             "query_result": None,
             "error": "No SQL was generated.",
             "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
-    # ---------------------------------------------------------
-    # 2. Never execute without the read-only database URL
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # Require read-only database URL
+    # --------------------------------------------------------
+
     if not config.READONLY_DATABASE_URL:
         return {
             "query_result": None,
@@ -39,69 +77,67 @@ def execute_sql(state):
                 "refusing to execute with a more privileged connection."
             ),
             "error_type": ErrorType.SQL_EXECUTION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     conn = None
     cur = None
 
     try:
-        # -----------------------------------------------------
-        # 3. Connect using read-only database credentials
-        # -----------------------------------------------------
-        conn = psycopg2.connect(
-            config.READONLY_DATABASE_URL
-        )
 
-        # -----------------------------------------------------
-        # 4. Create cursor
-        # -----------------------------------------------------
-        cur = conn.cursor()
+        # ----------------------------------------------------
+        # Measure database execution
+        # ----------------------------------------------------
 
-        # -----------------------------------------------------
-        # 5. Protect database with statement timeout
-        # -----------------------------------------------------
-        cur.execute(
-            "SET statement_timeout = '15s';"
-        )
+        with measure_latency(
+            latencies,
+            "execution",
+            attempt=attempt,
+            retry_latencies=retry_latencies
+        ):
 
-        # -----------------------------------------------------
-        # 6. Execute generated SQL
-        # -----------------------------------------------------
-        cur.execute(sql)
+            conn = psycopg2.connect(
+                config.READONLY_DATABASE_URL
+            )
 
-        # -----------------------------------------------------
-        # 7. Extract column names
-        # -----------------------------------------------------
-        columns = [
-            description[0]
-            for description in cur.description
-        ]
+            cur = conn.cursor()
 
-        # -----------------------------------------------------
-        # 8. Fetch rows
-        # -----------------------------------------------------
-        rows = cur.fetchall()
+            cur.execute(
+                "SET statement_timeout = '15s';"
+            )
 
-        # -----------------------------------------------------
-        # 9. Convert rows to dictionaries
-        # -----------------------------------------------------
-        results = [
-            dict(zip(columns, row))
-            for row in rows
-        ]
+            cur.execute(sql)
 
-        # -----------------------------------------------------
-        # 10. Successful execution
-        # -----------------------------------------------------
+            columns = [
+                description[0]
+                for description in cur.description
+            ]
+
+            rows = cur.fetchall()
+
+            results = [
+                dict(
+                    zip(
+                        columns,
+                        row
+                    )
+                )
+                for row in rows
+            ]
+
         return {
             "query_result": results,
             "error": None,
             "error_type": ErrorType.NONE.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
-    # ---------------------------------------------------------
-    # 11. PostgreSQL query timeout
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # PostgreSQL timeout
+    # --------------------------------------------------------
+
     except psycopg2.errors.QueryCanceledError as e:
 
         error_message = str(e)
@@ -111,40 +147,50 @@ def execute_sql(state):
                 "query_result": None,
                 "error": error_message,
                 "error_type": ErrorType.SQL_TIMEOUT.value,
+                "latencies": latencies,
+                "retry_latencies": retry_latencies,
             }
 
         return {
             "query_result": None,
             "error": error_message,
             "error_type": ErrorType.SQL_EXECUTION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
-    # ---------------------------------------------------------
-    # 12. Other PostgreSQL/database errors
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # Other PostgreSQL errors
+    # --------------------------------------------------------
+
     except psycopg2.Error as e:
+
         return {
             "query_result": None,
             "error": str(e),
             "error_type": ErrorType.SQL_EXECUTION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
-    # ---------------------------------------------------------
-    # 13. Unexpected Python/runtime errors
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # Unexpected error
+    # --------------------------------------------------------
+
     except Exception as e:
+
         return {
             "query_result": None,
             "error": str(e),
             "error_type": ErrorType.UNKNOWN_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
-    # ---------------------------------------------------------
-    # 14. Always clean up resources
-    #
-    # Cleanup itself must NEVER overwrite the original
-    # database/error classification.
-    # ---------------------------------------------------------
+    # --------------------------------------------------------
+    # Cleanup
+    # --------------------------------------------------------
+
     finally:
 
         if cur is not None:

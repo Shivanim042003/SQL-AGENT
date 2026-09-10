@@ -4,6 +4,7 @@ import re
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
+from app.core.timing import measure_latency
 
 
 # ============================================================
@@ -326,18 +327,74 @@ def generate_sql(state: AgentState) -> dict:
     Retry:
         Uses question + schema + business context
         + previous SQL + critic feedback.
+
+    Latency:
+        - cumulative SQL-generation latency
+        - per-attempt SQL-generation latency
     """
 
     # --------------------------------------------------------
-    # Get state values
+    # State values
     # --------------------------------------------------------
 
-    question = state.get("question", "")
-    schema = state.get("schema", "")
-    retrieved_context = state.get("retrieved_context", "")
+    question = state.get(
+        "question",
+        ""
+    )
 
-    previous_sql = state.get("previous_sql")
-    critique = state.get("critique")
+    schema = state.get(
+        "schema",
+        ""
+    )
+
+    retrieved_context = state.get(
+        "retrieved_context",
+        ""
+    )
+
+    previous_sql = state.get(
+        "previous_sql"
+    )
+
+    critique = state.get(
+        "critique"
+    )
+
+    # --------------------------------------------------------
+    # Preserve cumulative latency
+    # --------------------------------------------------------
+
+    latencies = dict(
+        state.get(
+            "latencies",
+            {}
+        )
+    )
+
+    # --------------------------------------------------------
+    # Preserve per-attempt latency
+    # --------------------------------------------------------
+
+    retry_latencies = {
+        key: dict(value)
+        for key, value in state.get(
+            "retry_latencies",
+            {}
+        ).items()
+    }
+
+    # --------------------------------------------------------
+    # Current attempt
+    #
+    # 0 = initial attempt
+    # 1 = first retry
+    # 2 = second retry
+    # --------------------------------------------------------
+
+    attempt = state.get(
+        "retry_count",
+        0
+    )
 
     # --------------------------------------------------------
     # Get LLM client
@@ -347,10 +404,15 @@ def generate_sql(state: AgentState) -> dict:
         client = get_llm_client()
 
     except Exception as e:
+
         return {
             "sql": None,
-            "error": f"SQL generation failed: {str(e)}",
+            "error": (
+                f"SQL generation failed: {str(e)}"
+            ),
             "error_type": ErrorType.LLM_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # ========================================================
@@ -406,7 +468,7 @@ Before returning the SQL, verify:
 4. The numerator matches the business definition when a numerator is required.
 5. The denominator matches the business definition when a denominator is required.
 6. No unnecessary filters were added to the denominator.
-7. No expensive correlated subquery is being used unnecessarily.
+7. No unnecessary correlated subquery is being used.
 8. No Cartesian product is being created.
 9. The query is as simple as possible while remaining correct.
 
@@ -590,15 +652,25 @@ Respond ONLY with JSON:
 
     try:
 
-        response = client.complete(
-            SYSTEM_PROMPT,
-            [
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ]
-        )
+        # ----------------------------------------------------
+        # Measure both cumulative and per-attempt latency
+        # ----------------------------------------------------
+
+        with measure_latency(
+            latencies,
+            "sql_generation",
+            attempt=attempt,
+            retry_latencies=retry_latencies
+        ):
+            response = client.complete(
+                SYSTEM_PROMPT,
+                [
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ]
+            )
 
         # ----------------------------------------------------
         # Debug output
@@ -612,7 +684,9 @@ Respond ONLY with JSON:
         # Parse SQL
         # ----------------------------------------------------
 
-        sql = parse_sql(response.content)
+        sql = parse_sql(
+            response.content
+        )
 
         # ----------------------------------------------------
         # SQL parsing failure
@@ -622,8 +696,14 @@ Respond ONLY with JSON:
 
             return {
                 "sql": None,
-                "error": "Could not parse SQL from LLM response.",
-                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+                "error": (
+                    "Could not parse SQL from LLM response."
+                ),
+                "error_type": (
+                    ErrorType.SQL_GENERATION_ERROR.value
+                ),
+                "latencies": latencies,
+                "retry_latencies": retry_latencies,
             }
 
         # ----------------------------------------------------
@@ -634,6 +714,8 @@ Respond ONLY with JSON:
             "sql": sql,
             "error": None,
             "error_type": ErrorType.NONE.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
 
     # --------------------------------------------------------
@@ -644,6 +726,10 @@ Respond ONLY with JSON:
 
         return {
             "sql": None,
-            "error": f"SQL generation failed: {str(e)}",
+            "error": (
+                f"SQL generation failed: {str(e)}"
+            ),
             "error_type": ErrorType.LLM_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
         }
