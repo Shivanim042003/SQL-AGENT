@@ -1,13 +1,25 @@
 import asyncio
+import logging
+import uuid
 
 from mcp.server import MCPServer
 
 from app.agent.graph import agent_graph
+from app.core.logging_config import configure_logging
 
 
-# ============================================================
-# MCP SERVER
-# ============================================================
+# =========================================================
+# Logging
+# =========================================================
+
+configure_logging()
+
+logger = logging.getLogger(__name__)
+
+
+# =========================================================
+# MCP Server
+# =========================================================
 
 server = MCPServer(
     name="sql-agent",
@@ -16,9 +28,9 @@ server = MCPServer(
 )
 
 
-# ============================================================
-# MCP TOOL
-# ============================================================
+# =========================================================
+# MCP Tool
+# =========================================================
 
 @server.tool(
     name="ask_database",
@@ -30,101 +42,150 @@ server = MCPServer(
     ),
 )
 def ask_database(question: str) -> str:
-    """
-    Send a natural-language database question
-    through the existing LangGraph SQL agent.
-    """
+
+    # -----------------------------------------------------
+    # Create unique request ID
+    # -----------------------------------------------------
+
+    request_id = str(uuid.uuid4())
+
+    logger.info(
+        "request_id=%s | request_started | question=%s",
+        request_id,
+        question,
+    )
+
+    # -----------------------------------------------------
+    # Initial Agent State
+    # -----------------------------------------------------
 
     initial_state = {
-        # ----------------------------------------------------
-        # User input
-        # ----------------------------------------------------
+        "request_id": request_id,
+
         "question": question,
 
-        # ----------------------------------------------------
-        # Intent / safety
-        # ----------------------------------------------------
         "is_destructive": False,
 
-        # ----------------------------------------------------
-        # Grounding
-        # ----------------------------------------------------
         "schema": "",
+
         "retrieved_context": "",
 
-        # ----------------------------------------------------
-        # SQL
-        # ----------------------------------------------------
         "sql": None,
+
         "previous_sql": None,
 
-        # ----------------------------------------------------
-        # Execution
-        # ----------------------------------------------------
         "query_result": None,
+
         "error": None,
 
-        # ----------------------------------------------------
-        # Critic
-        # ----------------------------------------------------
         "sql_valid": False,
+
         "critique": "",
 
-        # ----------------------------------------------------
-        # Retry
-        # ----------------------------------------------------
         "retry_count": 0,
 
-        # ----------------------------------------------------
-        # Final answer
-        # ----------------------------------------------------
         "final_answer": None,
     }
 
-    try:
-        result = agent_graph.invoke(initial_state)
+    # -----------------------------------------------------
+    # Run Agent
+    # -----------------------------------------------------
 
-        # -----------------------------------------------
-        # Successful final answer
-        # -----------------------------------------------
+    try:
+
+        result = agent_graph.invoke(initial_state)
 
         final_answer = result.get("final_answer")
 
+        # -------------------------------------------------
+        # Successful request
+        # -------------------------------------------------
+
         if final_answer:
+
+            logger.info(
+                "request_id=%s | request_completed | retry_count=%s",
+                request_id,
+                result.get("retry_count", 0),
+            )
+
             return final_answer
 
-        # -----------------------------------------------
-        # Agent execution error
-        # -----------------------------------------------
+        # -------------------------------------------------
+        # Execution failure
+        # -------------------------------------------------
 
         error = result.get("error")
 
         if error:
+
+            logger.error(
+                "request_id=%s | request_failed | error=%s",
+                request_id,
+                error,
+            )
+
             return f"Agent failed: {error}"
 
-        # -----------------------------------------------
-        # Critic rejected the SQL
-        # -----------------------------------------------
+        # -------------------------------------------------
+        # SQL verification failure
+        # -------------------------------------------------
 
         critique = result.get("critique")
 
         if critique:
+
+            logger.warning(
+                "request_id=%s | "
+                "request_failed_verification | "
+                "retry_count=%s | "
+                "critique=%s",
+                request_id,
+                result.get("retry_count", 0),
+                critique,
+            )
+
             return (
                 "The agent could not produce a valid answer.\n"
                 f"Critique: {critique}"
             )
 
-        return "The agent completed without producing a final answer."
+        # -------------------------------------------------
+        # No answer
+        # -------------------------------------------------
+
+        logger.warning(
+            "request_id=%s | request_completed_without_answer",
+            request_id,
+        )
+
+        return (
+            "The agent completed without producing "
+            "a final answer."
+        )
+
+    # -----------------------------------------------------
+    # Unexpected exception
+    # -----------------------------------------------------
 
     except Exception as e:
+
+        logger.exception(
+            "request_id=%s | request_exception",
+            request_id,
+        )
+
         return f"Agent error: {str(e)}"
 
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
+# =========================================================
+# MCP Entry Point
+# =========================================================
 
 async def main():
+
+    logger.info("MCP server starting")
+
     await server.run_stdio_async()
 
 
