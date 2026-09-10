@@ -5,19 +5,38 @@ def _clean_result(value):
     """
     Convert database-specific numeric values into
     clean Python values for the final response.
+
+    Decimal values are converted to strings instead of floats
+    so that we don't lose precision.
     """
 
+    # --------------------------------------------------------
+    # DECIMAL
+    # --------------------------------------------------------
+
     if isinstance(value, Decimal):
-        return float(value)
+        return str(value)
+
+    # --------------------------------------------------------
+    # LIST
+    # --------------------------------------------------------
 
     if isinstance(value, list):
         return [_clean_result(item) for item in value]
+
+    # --------------------------------------------------------
+    # DICTIONARY
+    # --------------------------------------------------------
 
     if isinstance(value, dict):
         return {
             key: _clean_result(val)
             for key, val in value.items()
         }
+
+    # --------------------------------------------------------
+    # OTHER VALUES
+    # --------------------------------------------------------
 
     return value
 
@@ -28,9 +47,9 @@ def format_answer(state):
     for every terminal path in the workflow.
     """
 
-    # --------------------------------------------------------
+    # ========================================================
     # DESTRUCTIVE REQUEST
-    # --------------------------------------------------------
+    # ========================================================
 
     if state.get("is_destructive"):
         return {
@@ -40,23 +59,24 @@ def format_answer(state):
             )
         }
 
-    # --------------------------------------------------------
+    # ========================================================
     # SUCCESSFUL QUERY
-    # --------------------------------------------------------
+    # ========================================================
 
     if state.get("sql_valid") and not state.get("error"):
 
         query_result = state.get("query_result")
 
+        # Clean database-specific values such as Decimal
         clean_result = _clean_result(query_result)
 
         return {
             "final_answer": f"Result: {clean_result}"
         }
 
-    # --------------------------------------------------------
+    # ========================================================
     # PIPELINE FAILURE
-    # --------------------------------------------------------
+    # ========================================================
 
     issue = (
         state.get("critique")
