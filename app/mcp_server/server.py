@@ -20,6 +20,9 @@ from app.metrics.repository import (
     get_error_statistics,
     get_recent_request_metrics,
     get_request_statistics,
+    get_retry_latency_statistics,
+    get_stage_latency_statistics,
+    reset_request_metrics,
     save_request_metrics,
 )
 
@@ -43,10 +46,12 @@ def persist_request_metrics(
     error_type: str,
     total_latency: float,
     success: bool,
+    latencies: dict | None = None,
+    retry_latencies: dict | None = None,
 ):
     """
-    Persist request metrics without allowing metrics failures
-    to affect the actual agent request.
+    Persist request metrics without allowing metrics
+    persistence failures to affect the actual agent request.
     """
 
     try:
@@ -56,6 +61,8 @@ def persist_request_metrics(
             error_type=error_type,
             total_latency=total_latency,
             success=success,
+            latencies=latencies,
+            retry_latencies=retry_latencies,
         )
 
     except Exception:
@@ -188,6 +195,8 @@ def ask_database(question: str) -> str:
                 error_type="SQL_TIMEOUT",
                 total_latency=0.0,
                 success=False,
+                latencies={},
+                retry_latencies={},
             )
 
             logger.error(
@@ -215,10 +224,17 @@ def ask_database(question: str) -> str:
             "NONE",
         )
 
-        total_latency = result.get(
+        latencies = result.get(
             "latencies",
             {},
-        ).get(
+        )
+
+        retry_latencies = result.get(
+            "retry_latencies",
+            {},
+        )
+
+        total_latency = latencies.get(
             "total",
             0.0,
         )
@@ -245,6 +261,8 @@ def ask_database(question: str) -> str:
                 error_type=error_type,
                 total_latency=total_latency,
                 success=True,
+                latencies=latencies,
+                retry_latencies=retry_latencies,
             )
 
             logger.info(
@@ -275,6 +293,8 @@ def ask_database(question: str) -> str:
                 error_type=error_type,
                 total_latency=total_latency,
                 success=False,
+                latencies=latencies,
+                retry_latencies=retry_latencies,
             )
 
             logger.warning(
@@ -293,7 +313,9 @@ def ask_database(question: str) -> str:
         # Agent execution failure
         # -------------------------------------------------
 
-        error = result.get("error")
+        error = result.get(
+            "error"
+        )
 
         if error:
 
@@ -305,6 +327,8 @@ def ask_database(question: str) -> str:
                 error_type=error_type,
                 total_latency=total_latency,
                 success=False,
+                latencies=latencies,
+                retry_latencies=retry_latencies,
             )
 
             logger.error(
@@ -325,7 +349,9 @@ def ask_database(question: str) -> str:
         # SQL verification failure
         # -------------------------------------------------
 
-        critique = result.get("critique")
+        critique = result.get(
+            "critique"
+        )
 
         if critique:
 
@@ -337,6 +363,8 @@ def ask_database(question: str) -> str:
                 error_type=error_type,
                 total_latency=total_latency,
                 success=False,
+                latencies=latencies,
+                retry_latencies=retry_latencies,
             )
 
             logger.warning(
@@ -360,7 +388,7 @@ def ask_database(question: str) -> str:
 
         # -------------------------------------------------
         # No answer
-        # -------------------------------------------------
+        # -----------------------------------------------------
 
         request_metrics.record_failure()
 
@@ -370,6 +398,8 @@ def ask_database(question: str) -> str:
             error_type=error_type,
             total_latency=total_latency,
             success=False,
+            latencies=latencies,
+            retry_latencies=retry_latencies,
         )
 
         logger.warning(
@@ -401,6 +431,8 @@ def ask_database(question: str) -> str:
             error_type="UNKNOWN_ERROR",
             total_latency=0.0,
             success=False,
+            latencies={},
+            retry_latencies={},
         )
 
         logger.exception(
@@ -421,7 +453,8 @@ def ask_database(question: str) -> str:
     name="get_metrics",
     description=(
         "Get current runtime metrics, historical aggregate "
-        "statistics, error-type statistics, and recent "
+        "statistics, error-type statistics, stage latency "
+        "statistics, retry latency statistics, and recent "
         "persisted request metrics."
     ),
 )
@@ -466,6 +499,42 @@ def get_metrics() -> str:
         error_statistics = {}
 
     # -----------------------------------------------------
+    # Stage latency statistics
+    # -----------------------------------------------------
+
+    try:
+
+        stage_latency_statistics = (
+            get_stage_latency_statistics()
+        )
+
+    except Exception:
+
+        logger.exception(
+            "metrics_stage_latency_query_failed"
+        )
+
+        stage_latency_statistics = {}
+
+    # -----------------------------------------------------
+    # Retry latency statistics
+    # -----------------------------------------------------
+
+    try:
+
+        retry_latency_statistics = (
+            get_retry_latency_statistics()
+        )
+
+    except Exception:
+
+        logger.exception(
+            "metrics_retry_latency_query_failed"
+        )
+
+        retry_latency_statistics = {}
+
+    # -----------------------------------------------------
     # Recent persisted requests
     # -----------------------------------------------------
 
@@ -492,10 +561,14 @@ def get_metrics() -> str:
         "runtime=%s | "
         "historical=%s | "
         "errors=%s | "
+        "stage_latency=%s | "
+        "retry_latency=%s | "
         "recent_requests=%s",
         runtime_metrics,
         historical_statistics,
         error_statistics,
+        stage_latency_statistics,
+        retry_latency_statistics,
         len(recent_requests),
     )
 
@@ -508,6 +581,12 @@ def get_metrics() -> str:
             "runtime_metrics": runtime_metrics,
             "historical_statistics": historical_statistics,
             "error_statistics": error_statistics,
+            "stage_latency_statistics": (
+                stage_latency_statistics
+            ),
+            "retry_latency_statistics": (
+                retry_latency_statistics
+            ),
             "recent_requests": recent_requests,
         }
     )
@@ -527,10 +606,6 @@ def get_metrics() -> str:
 def cleanup_metrics(
     retention_days: int = 30,
 ) -> str:
-
-    # -----------------------------------------------------
-    # Cleanup metrics
-    # -----------------------------------------------------
 
     try:
 
@@ -555,7 +630,8 @@ def cleanup_metrics(
     except ValueError as e:
 
         logger.warning(
-            "metrics_cleanup_rejected | reason=%s",
+            "metrics_cleanup_rejected | "
+            "reason=%s",
             str(e),
         )
 
@@ -568,6 +644,42 @@ def cleanup_metrics(
         )
 
         return f"Metrics cleanup failed: {e}"
+
+
+# =========================================================
+# Development / Testing Tool - Reset Metrics
+# =========================================================
+
+@server.tool(
+    name="reset_metrics",
+    description=(
+        "Development/testing only: delete all persisted "
+        "SQL agent request metrics."
+    ),
+)
+def reset_metrics() -> str:
+
+    try:
+
+        deleted_rows = reset_request_metrics()
+
+        logger.warning(
+            "metrics_reset | deleted_rows=%s",
+            deleted_rows,
+        )
+
+        return (
+            f"Metrics reset completed. "
+            f"Deleted {deleted_rows} persisted records."
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            "metrics_reset_failed"
+        )
+
+        return f"Metrics reset failed: {e}"
 
 
 # =========================================================
