@@ -75,3 +75,9 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 READONLY_DATABASE_URL = os.getenv(
     "READONLY_DATABASE_URL"
 )
+
+# =========================
+# Retrieval Database Configuration
+# =========================
+
+RETRIEVAL_DATABASE_URL = os.getenv("RETRIEVAL_DATABASE_URL")
