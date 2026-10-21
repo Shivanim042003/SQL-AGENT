@@ -1,4 +1,4 @@
-CREATE ROLE app_readonly WITH LOGIN PASSWORD 'RwJ9NSg54mY7tZjcQYAzpWxXfdj37-pG';
+CREATE ROLE app_readonly WITH LOGIN PASSWORD :'ro_password';
 
 GRANT CONNECT ON DATABASE sql_agent TO app_readonly;
 
