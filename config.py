@@ -34,6 +34,10 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 
+# Model for the destructive-intent safety check. A smaller, faster model
+# is fine here; defaults to LLM_MODEL so behaviour is unchanged unless set.
+INTENT_MODEL = os.getenv("INTENT_MODEL") or LLM_MODEL
+
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
     "http://localhost:11434"

@@ -1,9 +1,15 @@
 import json
 import re
 
-from app.llm.factory import get_llm_client
+import config
+from app.llm.factory import get_llm_client as _get_llm_client
 from app.core.error_types import ErrorType
 from app.core.timing import measure_latency
+
+
+def get_llm_client():
+    """Client for the safety check (may use a smaller, faster model)."""
+    return _get_llm_client(model=config.INTENT_MODEL)
 
 
 # ============================================================
