@@ -10,7 +10,7 @@ import config
 
 # document_embeddings is retrieval infrastructure,
 # not business/domain data.
-EXCLUDED_TABLES = {"document_embeddings"}
+EXCLUDED_TABLES = {"document_embeddings", "agent_request_metrics"}
 
 
 def get_schema_summary() -> str:
