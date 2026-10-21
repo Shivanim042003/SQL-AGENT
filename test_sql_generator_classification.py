@@ -24,13 +24,13 @@ def base_state():
 
 class FakeClientLLMError:
 
-    def complete(self, system_prompt, messages):
+    def complete(self, system_prompt, messages, **kwargs):
         raise RuntimeError("Test LLM failure")
 
 
 class FakeClientBadResponse:
 
-    def complete(self, system_prompt, messages):
+    def complete(self, system_prompt, messages, **kwargs):
 
         class Response:
             content = "This is not valid SQL JSON"
@@ -53,6 +53,7 @@ def test_llm_error():
     print(f"error: {result.get('error')}")
 
     assert result["error_type"] == "LLM_ERROR"
+    assert "Test LLM failure" in result["error"]
 
     print("PASS")
 

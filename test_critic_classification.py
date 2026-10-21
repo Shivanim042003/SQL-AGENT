@@ -24,13 +24,13 @@ def base_state():
 
 class FakeCriticClientError:
 
-    def complete(self, system_prompt, messages):
+    def complete(self, system_prompt, messages, **kwargs):
         raise RuntimeError("Test critic failure")
 
 
 class FakeCriticClientBadResponse:
 
-    def complete(self, system_prompt, messages):
+    def complete(self, system_prompt, messages, **kwargs):
 
         class Response:
             content = "This is not valid JSON"
@@ -40,7 +40,7 @@ class FakeCriticClientBadResponse:
 
 class FakeCriticClientSuccess:
 
-    def complete(self, system_prompt, messages):
+    def complete(self, system_prompt, messages, **kwargs):
 
         class Response:
             content = '{"valid": true, "feedback": ""}'
@@ -63,6 +63,7 @@ def test_critic_llm_error():
     print(f"critique: {result.get('critique')}")
 
     assert result["error_type"] == "CRITIC_ERROR"
+    assert "Test critic failure" in result["critique"]
 
     print("PASS")
 
@@ -82,6 +83,7 @@ def test_critic_bad_response():
     print(f"critique: {result.get('critique')}")
 
     assert result["error_type"] == "CRITIC_ERROR"
+    assert "invalid JSON" in result["critique"]
 
     print("PASS")
 

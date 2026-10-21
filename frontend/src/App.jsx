@@ -34,7 +34,7 @@ function App() {
       const data = await response.json();
 
       setAnswer(data.answer);
-    } catch (err) {
+    } catch {
       setError("Unable to connect to the SQL agent.");
     } finally {
       setLoading(false);
