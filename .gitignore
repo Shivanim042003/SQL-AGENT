@@ -44,3 +44,11 @@ infra/pgdata/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+# Local secrets and environments
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+node_modules/
+dist/

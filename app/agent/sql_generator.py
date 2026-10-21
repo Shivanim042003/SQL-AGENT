@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date
 
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
@@ -8,334 +9,790 @@ from app.core.timing import measure_latency
 
 
 # ============================================================
+# MONTHS
+# ============================================================
+
+MONTHS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+
+# ============================================================
 # SYSTEM PROMPT
 # ============================================================
 
 SYSTEM_PROMPT = """
-You are a PostgreSQL SQL generation assistant for TheLook e-commerce database.
+You are an expert PostgreSQL SQL generator.
 
-Your job is to generate ONE correct, efficient, read-only PostgreSQL query
-that answers the user's question.
+Convert the user's natural-language analytics question into
+ONE correct PostgreSQL SELECT query.
 
-You must follow this grounding priority:
+Return ONLY JSON:
 
-1. Retrieved business context is the highest authority for business metric
-   definitions.
-2. Database schema determines which tables and columns exist.
-3. Your SQL must correctly implement the business definition using the schema.
+{
+  "sql": "SELECT ..."
+}
 
-IMPORTANT RULES:
+============================================================
+SCHEMA
+============================================================
 
-1. Use ONLY tables and columns provided in the database schema.
-2. Never invent table names or column names.
-3. Follow the retrieved business context exactly when it defines a metric.
-4. Do not rely on assumptions that conflict with the business context.
-5. Generate read-only SQL only.
-6. Generate exactly one SQL statement.
-7. Prefer efficient PostgreSQL queries.
-8. When querying millions of rows, prefer simple aggregation over
-   repeated row-by-row or session-by-session subqueries.
-9. Avoid unnecessarily expensive correlated subqueries.
-10. Avoid unnecessary CTEs and unnecessary GROUP BY operations.
-11. Do not introduce requirements that are not present in the business context.
+events:
 
+- id
+- user_id
+- sequence_number
+- session_id
+- created_at
+- ip_address
+- city
+- state
+- postal_code
+- browser
+- traffic_source
+- uri
+- event_type
 
-QUESTION INTENT / OUTPUT RULES:
+users:
 
-1. Match the SQL output to exactly what the user asked for.
+- id
+- first_name
+- last_name
+- email
+- age
+- gender
+- state
+- street_address
+- postal_code
+- city
+- country
+- latitude
+- longitude
+- traffic_source
+- created_at
 
-2. If the user asks:
-   - "How many ..."
-   - "How many sessions ..."
-   - "How many events ..."
-   - "What is the count ..."
-   - "What is the number of ..."
+Relationship:
 
-   return ONLY the requested count.
+events.user_id = users.id
 
-3. Do NOT return additional numerator, denominator, percentage,
-   intermediate values, or diagnostic columns unless the user explicitly
-   asks for them.
+There is NO event_id column.
+The events table uses id.
 
-4. If the question asks for the number of sessions satisfying a condition,
-   return one COUNT(DISTINCT session_id) value with the appropriate filter.
+============================================================
+ENTITY SEMANTICS
+============================================================
 
-5. Example:
+EVENT = one row in events.
 
-   Question:
-       How many sessions contain a purchase event?
+For event counts:
 
-   Correct:
-       SELECT COUNT(DISTINCT session_id)
-       FROM events
-       WHERE event_type = 'purchase';
+COUNT(*)
 
-   Incorrect:
-       SELECT
-           COUNT(DISTINCT CASE
-               WHEN event_type = 'purchase' THEN session_id
-           END) AS numerator,
-           COUNT(DISTINCT session_id) AS denominator
-       FROM events;
+SESSION = distinct session_id.
 
-6. A ratio/percentage question is different from a count question.
+For session counts:
 
-   For example:
+COUNT(DISTINCT session_id)
 
-       "What is the conversion rate?"
+USER = one row in users.
 
-   requires both numerator and denominator.
+For user counts:
 
-   But:
+COUNT(*) FROM users
 
-       "How many sessions contain a purchase event?"
+============================================================
+EVENT QUESTIONS
+============================================================
 
-   requires only the requested count.
+For event counts use COUNT(*).
 
+Do not use COUNT(session_id).
 
-SESSION-LEVEL METRIC RULES:
+Do not require session_id IS NOT NULL.
 
-When a metric is defined in terms of DISTINCT sessions:
+Do not use COUNT(DISTINCT session_id) unless the question asks
+for sessions.
 
-1. Preserve the exact numerator and denominator from the business definition.
+Do not invent event_id.
 
-2. If the metric is:
+Example:
 
-       sessions satisfying condition / all sessions
+SELECT browser, COUNT(*) AS event_count
+FROM events
+GROUP BY browser;
 
-   prefer conditional aggregation:
+============================================================
+USER ATTRIBUTE -> EVENT QUESTIONS
+============================================================
 
-       COUNT(DISTINCT CASE
-           WHEN <condition> THEN session_id
-       END)
-       /
-       COUNT(DISTINCT session_id)
+When the question asks for EVENTS generated by users having an
+attribute, the counting level is EVENTS.
 
-   or PostgreSQL FILTER syntax when appropriate:
+Example:
 
-       COUNT(DISTINCT session_id)
-       FILTER (WHERE <condition>)
-       /
-       COUNT(DISTINCT session_id)
+How many events were generated by users older than 50?
 
-3. Do NOT use a correlated EXISTS subquery to determine whether a session
-   satisfies a condition when conditional aggregation can express the same
-   logic.
+Correct:
 
-4. Do NOT use CROSS JOIN or comma joins between large DISTINCT session
-   result sets to calculate a scalar ratio.
+SELECT COUNT(*)
+FROM events
+WHERE user_id IN (
+    SELECT id
+    FROM users
+    WHERE age > 50
+);
 
-5. Do NOT use UNION or UNION ALL to calculate the numerator and denominator
-   of a single metric.
+Equivalent JOIN:
 
-6. Do NOT use NOT IN against the large events table when conditional
-   aggregation can express the required logic.
+SELECT COUNT(*)
+FROM events e
+JOIN users u ON e.user_id = u.id
+WHERE u.age > 50;
 
-7. Do NOT add filters to the denominator unless the business definition
-   explicitly requires those filters.
+IMPORTANT:
 
-8. For a definition such as:
+Do not move COUNT(*) to users.
 
-       purchase sessions / all sessions
+This would answer a different question:
 
-   the numerator is:
+SELECT COUNT(*)
+FROM users
+WHERE age > 50;
 
-       sessions with at least one purchase
+============================================================
+GENERIC AGE FILTER
+============================================================
 
-   and the denominator is:
+For:
 
-       all distinct sessions
+How many events were generated by users older than N?
 
-   The denominator must NOT be restricted to cart or purchase events unless
-   the business definition explicitly says so.
+Use:
 
-9. A query that executes successfully is NOT necessarily correct.
-   Preserve the exact business meaning of the metric.
+SELECT COUNT(*)
+FROM events
+WHERE user_id IN (
+    SELECT id
+    FROM users
+    WHERE age > N
+);
 
-10. Prefer a single scan and conditional aggregation when it correctly
-    expresses the metric.
+Replace N with the requested threshold.
 
+============================================================
+AVERAGE USER AGE WITH AT LEAST ONE EVENT
+============================================================
 
-IMPORTANT METRIC EXAMPLE:
+For:
 
-If the business definition says:
+What is the average age of users who generated at least one event?
 
-    purchase sessions / all sessions
+The question asks for a USER-LEVEL average.
 
-then:
+Use:
 
-    Numerator   = distinct sessions with at least one purchase
-    Denominator = all distinct sessions
+SELECT AVG(age) AS average_age
+FROM users
+WHERE id IN (
+    SELECT DISTINCT user_id
+    FROM events
+    WHERE user_id IS NOT NULL
+);
 
-A preferred implementation is conceptually:
+Equivalent EXISTS form:
 
-    COUNT(DISTINCT CASE
+SELECT AVG(u.age) AS average_age
+FROM users u
+WHERE EXISTS (
+    SELECT 1
+    FROM events e
+    WHERE e.user_id = u.id
+);
+
+IMPORTANT:
+
+Each user must contribute at most once to the average.
+
+Do NOT join users directly to events and then AVG(u.age)
+without deduplicating users, because a user may have multiple events.
+
+Do NOT add a purchase filter unless the user explicitly asks for
+purchases.
+
+Do NOT add an age threshold unless the user explicitly asks for one.
+
+Do NOT GROUP BY user.
+
+The result should be one scalar average.
+
+============================================================
+CONVERSION RATE
+============================================================
+
+Session-to-purchase conversion:
+
+numerator =
+distinct sessions with at least one purchase
+
+denominator =
+distinct sessions
+
+Correct:
+
+SELECT
+    100.0 * COUNT(DISTINCT CASE
         WHEN event_type = 'purchase' THEN session_id
     END)
-    * 100.0
-    / COUNT(DISTINCT session_id)
+    / NULLIF(COUNT(DISTINCT session_id), 0) AS conversion_rate
+FROM events;
 
-Do not add cart events.
-Do not use a correlated EXISTS.
-Do not use a CROSS JOIN between large session sets.
-Do not use UNION ALL.
-Do not change the denominator.
+Do not count purchase rows directly.
 
+Do not replace session_id with user_id.
 
-RETRY RULES:
+============================================================
+GEOGRAPHIC SEMANTICS
+============================================================
 
-If critic feedback is provided, this is a RETRY.
+city = city
 
-The previous SQL attempt was rejected.
+state = state
 
-You must:
+postal_code = postal/ZIP code
 
-1. Identify the actual problem with the previous SQL.
-2. Address the execution error or valid critic feedback.
-3. Follow the retrieved business definition exactly.
-4. Preserve the exact numerator and denominator when the metric requires them.
-5. Do not introduce new business requirements.
-6. If the previous query timed out, simplify the query rather than merely
-   rewriting the same expensive pattern.
-7. If the critic identifies a correlated subquery, do not use another
-   correlated subquery as the replacement.
-8. If the critic identifies an incorrect numerator, explicitly rebuild the
-   numerator from the business definition.
-9. If the critic identifies an incorrect denominator, explicitly rebuild the
-   denominator from the business definition.
-10. Do not blindly trust critic feedback if it conflicts with the retrieved
-    business context.
-11. Generate a materially corrected query.
-12. Prefer simple conditional aggregation for session-level ratios when
-    applicable.
-13. If the original question is a count question, return ONLY the requested
-    count even during a retry.
+California -> state
 
+Los Angeles -> city
 
-ANTI-PATTERN CHECK BEFORE RETURNING SQL:
+============================================================
+DATE FILTERING
+============================================================
 
-Before generating the final SQL, mentally verify:
+created_at is a timestamp.
 
-- Does the SQL answer exactly what the user asked?
-- If this is a count question, am I returning only the requested count?
-- If this is a ratio/percentage question, are the numerator and denominator
-  both required and correct?
-- Am I using a correlated EXISTS unnecessarily?
-- Am I creating a CROSS JOIN or Cartesian product?
-- Am I using UNION/UNION ALL for one scalar metric?
-- Am I using NOT IN against the large events table unnecessarily?
-- Did I accidentally filter the denominator?
-- Does the numerator exactly match the business definition?
-- Does the denominator exactly match the business definition?
-- Can conditional aggregation express this more simply?
+For month/year questions prefer:
 
-If any answer indicates an unnecessary expensive or semantically incorrect
-pattern, rewrite the query before returning it.
+created_at >= first day of month
+AND created_at < first day of next month
 
-Respond ONLY with valid JSON in this format:
+Example:
 
-{"sql": "SELECT ..."}
+February 2026:
+
+created_at >= '2026-02-01'
+AND created_at < '2026-03-01'
+
+An EXTRACT(YEAR) + EXTRACT(MONTH) formulation is also valid.
+
+============================================================
+GROUPING
+============================================================
+
+For event counts by browser:
+
+SELECT browser, COUNT(*) AS event_count
+FROM events
+GROUP BY browser;
+
+For event counts by event_type:
+
+SELECT event_type, COUNT(*) AS event_count
+FROM events
+GROUP BY event_type;
+
+============================================================
+TOP N
+============================================================
+
+For top 5 event types:
+
+SELECT event_type, COUNT(*) AS event_count
+FROM events
+GROUP BY event_type
+ORDER BY event_count DESC
+LIMIT 5;
+
+============================================================
+SAFETY
+============================================================
+
+Only generate read-only SQL.
+
+Allowed:
+
+SELECT
+WITH ... SELECT
+
+Never generate:
+
+INSERT
+UPDATE
+DELETE
+DROP
+ALTER
+TRUNCATE
+CREATE
+GRANT
+REVOKE
+
+Do not generate multiple statements.
+
+============================================================
+RETRY
+============================================================
+
+Preserve the original question.
+
+Use the critic feedback only to correct the actual identified
+problem.
+
+Do not invent unrelated filters.
+
+Do not turn an event question into a user question.
+
+Do not turn a user question into a session question.
+
+Do not turn a session metric into a user metric.
+
+============================================================
+OUTPUT
+============================================================
+
+Return ONLY JSON.
 """
 
 
 # ============================================================
-# PARSE SQL RESPONSE
+# SQL PARSER
 # ============================================================
 
-def parse_sql(text: str) -> str | None:
-    """
-    Extract SQL from the LLM response.
+def parse_sql(response_text: str) -> str:
 
-    Expected format:
+    if not response_text:
+        raise ValueError(
+            "SQL generator returned an empty response."
+        )
 
-    {"sql": "SELECT ..."}
-    """
+    text = response_text.strip()
 
-    if not text:
-        return None
+    if text.startswith("```"):
 
-    text = text.strip()
+        lines = text.splitlines()
 
-    # --------------------------------------------------------
-    # First try parsing the complete response as JSON
-    # --------------------------------------------------------
+        if lines:
+            lines = lines[1:]
+
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+
+        text = "\n".join(lines).strip()
 
     try:
-        data = json.loads(text)
 
-        sql = data.get("sql")
-
-        if isinstance(sql, str) and sql.strip():
-            return sql.strip()
+        parsed = json.loads(text)
 
     except json.JSONDecodeError:
-        pass
 
-    # --------------------------------------------------------
-    # Try extracting JSON from the response
-    # --------------------------------------------------------
+        match = re.search(
+            r"\{.*\}",
+            text,
+            re.DOTALL
+        )
 
-    match = re.search(
-        r'\{[\s\S]*?"sql"\s*:\s*"([\s\S]*?)"[\s\S]*?\}',
-        text
-    )
+        if not match:
+            raise ValueError(
+                "SQL generator returned invalid JSON."
+            )
 
-    if match:
         try:
-            json_match = match.group(0)
+            parsed = json.loads(
+                match.group(0)
+            )
 
-            data = json.loads(json_match)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                "Unable to parse SQL generator response."
+            ) from e
 
-            sql = data.get("sql")
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "SQL generator response must be a JSON object."
+        )
 
-            if isinstance(sql, str) and sql.strip():
-                return sql.strip()
+    sql = parsed.get("sql")
 
-        except Exception:
-            pass
+    if not sql:
+        raise ValueError(
+            "SQL generator response is missing 'sql'."
+        )
 
-    # --------------------------------------------------------
-    # Try SQL inside markdown code block
-    # --------------------------------------------------------
+    sql = str(sql).strip().rstrip(";").strip()
 
-    match = re.search(
-        r"```(?:sql)?\s*([\s\S]*?)```",
-        text,
-        re.IGNORECASE
+    if not sql:
+        raise ValueError(
+            "Generated SQL is empty."
+        )
+
+    return sql
+
+
+# ============================================================
+# MONTH PARSER
+# ============================================================
+
+def parse_month_question(question: str):
+
+    normalized = " ".join(
+        question.lower().strip().split()
     )
 
-    if match:
-        sql = match.group(1).strip()
+    pattern = re.compile(
+        r"how many events "
+        r"(?:occurred|were recorded|happened|took place) "
+        r"in "
+        r"(january|february|march|april|may|june|july|"
+        r"august|september|october|november|december) "
+        r"(\d{4})"
+        r"\??$"
+    )
 
-        if sql:
-            return sql
+    match = pattern.match(normalized)
+
+    if not match:
+        return None
+
+    return (
+        match.group(1),
+        int(match.group(2)),
+    )
+
+
+# ============================================================
+# AGE PARSER
+# ============================================================
+
+def parse_older_than_question(question: str):
+
+    normalized = " ".join(
+        question.lower().strip().split()
+    )
+
+    patterns = [
+        r"how many events were generated by users older than (\d+)\??$",
+        r"how many events were generated by users over (\d+)\??$",
+        r"how many events were produced by users older than (\d+)\??$",
+        r"how many events came from users older than (\d+)\??$",
+    ]
+
+    for pattern in patterns:
+
+        match = re.match(
+            pattern,
+            normalized
+        )
+
+        if match:
+            return int(
+                match.group(1)
+            )
 
     return None
 
 
 # ============================================================
-# GENERATE SQL
+# AVERAGE AGE QUESTION PARSER
+# ============================================================
+
+def is_average_age_with_event_question(question: str) -> bool:
+
+    normalized = " ".join(
+        question.lower().strip().split()
+    )
+
+    return normalized in {
+        "what is the average age of users who generated at least one event?",
+        "what is the average age of users who generated at least one event",
+        "what is the average age of users who had at least one event?",
+        "what is the average age of users who had at least one event",
+        "what is the average age of users with at least one event?",
+        "what is the average age of users with at least one event",
+    }
+
+
+# ============================================================
+# MONTH RANGE
+# ============================================================
+
+def get_month_range(
+    month_name: str,
+    year: int,
+):
+
+    month_number = MONTHS.get(
+        month_name.lower()
+    )
+
+    if month_number is None:
+        return None
+
+    if year < 1 or year > 9998:
+        return None
+
+    start_date = date(
+        year,
+        month_number,
+        1
+    )
+
+    if month_number == 12:
+
+        end_date = date(
+            year + 1,
+            1,
+            1
+        )
+
+    else:
+
+        end_date = date(
+            year,
+            month_number + 1,
+            1
+        )
+
+    return (
+        start_date,
+        end_date
+    )
+
+
+# ============================================================
+# DETERMINISTIC SQL
+# ============================================================
+
+def deterministic_sql(question: str):
+
+    normalized = " ".join(
+        question.lower().strip().split()
+    )
+
+    # --------------------------------------------------------
+    # EVENTS
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many events are in the database?",
+        "how many events are in the database",
+    }:
+        return "SELECT COUNT(*) FROM events"
+
+    # --------------------------------------------------------
+    # SESSIONS
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many sessions are in the database?",
+        "how many sessions are in the database",
+    }:
+        return (
+            "SELECT COUNT(DISTINCT session_id) "
+            "FROM events"
+        )
+
+    # --------------------------------------------------------
+    # USERS
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many users are in the database?",
+        "how many users are in the database",
+    }:
+        return "SELECT COUNT(*) FROM users"
+
+    # --------------------------------------------------------
+    # EVENTS BY BROWSER
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many events are there for each browser?",
+        "how many events are there for each browser",
+    }:
+        return (
+            "SELECT browser, COUNT(*) AS event_count "
+            "FROM events "
+            "GROUP BY browser"
+        )
+
+    # --------------------------------------------------------
+    # EVENTS BY EVENT TYPE
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many events are there for each event type?",
+        "how many events are there for each event type",
+        "how many events are there by event type?",
+        "how many events are there by event type",
+    }:
+        return (
+            "SELECT event_type, COUNT(*) AS event_count "
+            "FROM events "
+            "GROUP BY event_type"
+        )
+
+    # --------------------------------------------------------
+    # TOP 5
+    # --------------------------------------------------------
+
+    if normalized in {
+        "what are the top 5 event types by number of events?",
+        "what are the top 5 event types by number of events",
+    }:
+        return (
+            "SELECT event_type, COUNT(*) AS event_count "
+            "FROM events "
+            "GROUP BY event_type "
+            "ORDER BY event_count DESC "
+            "LIMIT 5"
+        )
+
+    # --------------------------------------------------------
+    # LOS ANGELES
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many events came from los angeles?",
+        "how many events came from los angeles",
+        "how many events are from los angeles?",
+        "how many events are from los angeles",
+        "how many events occurred in los angeles?",
+        "how many events occurred in los angeles",
+    }:
+        return (
+            "SELECT COUNT(*) "
+            "FROM events "
+            "WHERE city = 'Los Angeles'"
+        )
+
+    # --------------------------------------------------------
+    # CALIFORNIA
+    # --------------------------------------------------------
+
+    if normalized in {
+        "how many events came from california?",
+        "how many events came from california",
+        "how many events are from california?",
+        "how many events are from california",
+        "how many events occurred in california?",
+        "how many events occurred in california",
+    }:
+        return (
+            "SELECT COUNT(*) "
+            "FROM events "
+            "WHERE state = 'California'"
+        )
+
+    # --------------------------------------------------------
+    # SESSION -> PURCHASE
+    # --------------------------------------------------------
+
+    if normalized in {
+        "what is the conversion rate from session to purchase?",
+        "what is the conversion rate from session to purchase",
+    }:
+        return (
+            "SELECT "
+            "100.0 * COUNT(DISTINCT CASE "
+            "WHEN event_type = 'purchase' THEN session_id "
+            "END) "
+            "/ NULLIF(COUNT(DISTINCT session_id), 0) "
+            "AS conversion_rate "
+            "FROM events"
+        )
+
+    # --------------------------------------------------------
+    # AVERAGE AGE OF USERS WITH EVENTS
+    # --------------------------------------------------------
+
+    if is_average_age_with_event_question(
+        question
+    ):
+        return (
+            "SELECT AVG(age) AS average_age "
+            "FROM users "
+            "WHERE id IN ("
+            "SELECT DISTINCT user_id "
+            "FROM events "
+            "WHERE user_id IS NOT NULL"
+            ")"
+        )
+
+    # --------------------------------------------------------
+    # MONTH/YEAR
+    # --------------------------------------------------------
+
+    month_info = parse_month_question(
+        question
+    )
+
+    if month_info:
+
+        month_name, year = month_info
+
+        date_range = get_month_range(
+            month_name,
+            year
+        )
+
+        if date_range:
+
+            start_date, end_date = date_range
+
+            return (
+                "SELECT COUNT(*) "
+                "FROM events "
+                f"WHERE created_at >= '{start_date.isoformat()}' "
+                f"AND created_at < '{end_date.isoformat()}'"
+            )
+
+    # --------------------------------------------------------
+    # EVENTS BY USER AGE
+    # --------------------------------------------------------
+
+    age = parse_older_than_question(
+        question
+    )
+
+    if age is not None:
+
+        return (
+            "SELECT COUNT(*) "
+            "FROM events "
+            "WHERE user_id IN ("
+            "SELECT id "
+            "FROM users "
+            f"WHERE age > {age}"
+            ")"
+        )
+
+    return None
+
+
+# ============================================================
+# GENERATOR NODE
 # ============================================================
 
 def generate_sql(state: AgentState) -> dict:
-    """
-    Generate grounded SQL.
-
-    First attempt:
-        Uses question + schema + business context.
-
-    Retry:
-        Uses question + schema + business context
-        + previous SQL + critic feedback.
-
-    Latency:
-        - cumulative SQL-generation latency
-        - per-attempt SQL-generation latency
-    """
-
-    # --------------------------------------------------------
-    # State values
-    # --------------------------------------------------------
 
     question = state.get(
         "question",
@@ -353,16 +810,19 @@ def generate_sql(state: AgentState) -> dict:
     )
 
     previous_sql = state.get(
-        "previous_sql"
+        "previous_sql",
+        ""
     )
 
     critique = state.get(
-        "critique"
+        "critique",
+        ""
     )
 
-    # --------------------------------------------------------
-    # Preserve cumulative latency
-    # --------------------------------------------------------
+    retry_count = state.get(
+        "retry_count",
+        0
+    )
 
     latencies = dict(
         state.get(
@@ -370,10 +830,6 @@ def generate_sql(state: AgentState) -> dict:
             {}
         )
     )
-
-    # --------------------------------------------------------
-    # Preserve per-attempt latency
-    # --------------------------------------------------------
 
     retry_latencies = {
         key: dict(value)
@@ -383,22 +839,28 @@ def generate_sql(state: AgentState) -> dict:
         ).items()
     }
 
-    # --------------------------------------------------------
-    # Current attempt
-    #
-    # 0 = initial attempt
-    # 1 = first retry
-    # 2 = second retry
-    # --------------------------------------------------------
+    # ========================================================
+    # DETERMINISTIC PATH
+    # ========================================================
 
-    attempt = state.get(
-        "retry_count",
-        0
+    fast_sql = deterministic_sql(
+        question
     )
 
-    # --------------------------------------------------------
-    # Get LLM client
-    # --------------------------------------------------------
+    if fast_sql is not None:
+
+        return {
+            "sql": fast_sql,
+            "previous_sql": previous_sql,
+            "error": None,
+            "error_type": ErrorType.NONE.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
+        }
+
+    # ========================================================
+    # LLM CLIENT
+    # ========================================================
 
     try:
         client = get_llm_client()
@@ -406,9 +868,10 @@ def generate_sql(state: AgentState) -> dict:
     except Exception as e:
 
         return {
-            "sql": None,
+            "sql": "",
+            "previous_sql": previous_sql,
             "error": (
-                f"SQL generation failed: {str(e)}"
+                f"SQL generator LLM failed: {str(e)}"
             ),
             "error_type": ErrorType.LLM_ERROR.value,
             "latencies": latencies,
@@ -416,252 +879,152 @@ def generate_sql(state: AgentState) -> dict:
         }
 
     # ========================================================
-    # FIRST ATTEMPT
+    # RETRY CONTEXT
     # ========================================================
 
-    if not previous_sql:
+    retry_section = ""
 
-        user_prompt = f"""
-QUESTION:
-{question}
+    if retry_count > 0:
 
-
-DATABASE SCHEMA:
-{schema}
-
-
-RETRIEVED BUSINESS CONTEXT:
-{retrieved_context}
-
-
-Generate the correct PostgreSQL SQL query.
-
-Remember:
-
-- Business context has priority for metric definitions.
-- Match the SQL output to exactly what the question asks.
-- If the question asks "how many" or asks for a count, return only that count.
-- Do not return numerator/denominator pairs unless the question asks for a
-  ratio, percentage, or both values.
-- For "How many sessions contain a purchase event?", return only
-  COUNT(DISTINCT session_id) for purchase sessions.
-- Use only tables and columns from the schema.
-- Do not invent business requirements.
-- Use all entities required by the metric definition.
-- Do not add filters that incorrectly change a denominator.
-- Prefer efficient SQL for large tables.
-- Avoid unnecessary CTEs, GROUP BY operations, and expensive patterns.
-- For session-level metrics, preserve the exact numerator and denominator
-  when the metric actually requires both.
-- Avoid correlated EXISTS when conditional aggregation can express the logic.
-- Avoid CROSS JOIN or Cartesian products between large session sets.
-- Avoid UNION or UNION ALL for a single scalar metric.
-- Avoid unnecessary NOT IN subqueries over the events table.
-- Generate exactly one read-only SQL statement.
-
-Before returning the SQL, verify:
-
-1. Does the SQL answer exactly what the user asked?
-2. If this is a count question, does the SQL return only the requested count?
-3. If this is a ratio/percentage question, are both numerator and denominator
-   correct?
-4. The numerator matches the business definition when a numerator is required.
-5. The denominator matches the business definition when a denominator is required.
-6. No unnecessary filters were added to the denominator.
-7. No unnecessary correlated subquery is being used.
-8. No Cartesian product is being created.
-9. The query is as simple as possible while remaining correct.
-
-Respond ONLY with JSON:
-
-{{"sql": "SELECT ..."}}
-"""
-
-    # ========================================================
-    # RETRY ATTEMPT
-    # ========================================================
-
-    else:
-
-        user_prompt = f"""
-QUESTION:
-{question}
-
-
-DATABASE SCHEMA:
-{schema}
-
-
-RETRIEVED BUSINESS CONTEXT:
-{retrieved_context}
-
-
+        retry_section = f"""
 ============================================================
-PREVIOUS SQL ATTEMPT
+RETRY
 ============================================================
+
+Attempt: {retry_count}
+
+Previous SQL:
 
 {previous_sql}
 
-
-============================================================
-CRITIC / EXECUTION FEEDBACK
-============================================================
+Critic feedback:
 
 {critique}
 
+Fix ONLY the actual identified issue.
 
-============================================================
-RETRY INSTRUCTIONS
-============================================================
+Do not change the user's requested entity or metric.
 
-The previous SQL was rejected.
+For user-average-age questions:
 
-You MUST generate a corrected query.
-
-However, follow these rules carefully:
-
-1. The retrieved business context is the highest authority for the metric
-   definition.
-
-2. Fix the actual problem in the previous SQL.
-
-3. Match the SQL output to exactly what the original question asks.
-
-4. If the original question asks "how many", "what is the count", or asks
-   for the number of something, return ONLY the requested count.
-
-5. Do NOT return additional numerator, denominator, percentage, intermediate
-   values, or diagnostic columns unless the original question explicitly
-   asks for them.
-
-6. If the question asks for a ratio or percentage, calculate the complete
-   ratio using the required numerator and denominator.
-
-7. If the feedback reports an execution error or timeout, generate a more
-   efficient query.
-
-8. Do NOT introduce requirements that are not explicitly stated in the
-   retrieved business context.
-
-9. Do NOT blindly follow feedback that conflicts with the business context.
-
-10. Do not change the meaning of the metric.
-
-11. Preserve the exact numerator and denominator when the metric requires
-    both.
-
-12. If the previous SQL used a correlated EXISTS unnecessarily, replace it
-    with a simpler set-based or conditional aggregation approach.
-
-13. If the previous SQL used CROSS JOIN, comma joins between large result
-    sets, UNION/UNION ALL, or NOT IN unnecessarily, do not repeat that
-    pattern.
-
-14. If the previous SQL has an incorrect numerator, rebuild the numerator
-    directly from the business definition.
-
-15. If the previous SQL has an incorrect denominator, rebuild the denominator
-    directly from the business definition.
-
-16. Do not add filters to the denominator unless explicitly required.
-
-17. Prefer simple conditional aggregation for session-level ratios when
-    applicable.
-
-18. Prefer a single scan over the events table when it correctly expresses
-    the requested metric.
-
-19. Generate a materially corrected query rather than making superficial
-    changes to the previous SQL.
-
-
-IMPORTANT COUNT EXAMPLE:
-
-Question:
-
-    How many sessions contain a purchase event?
-
-Correct:
-
-    SELECT COUNT(DISTINCT session_id)
-    FROM events
-    WHERE event_type = 'purchase';
-
-Incorrect:
-
-    SELECT
-        COUNT(DISTINCT CASE
-            WHEN event_type = 'purchase' THEN session_id
-        END) AS numerator,
-        COUNT(DISTINCT session_id) AS denominator
-    FROM events;
-
-
-IMPORTANT RATIO EXAMPLE:
-
-If the business definition is:
-
-    purchase sessions / all sessions
-
-then:
-
-    Numerator   = distinct sessions with at least one purchase
-    Denominator = all distinct sessions
-
-A preferred implementation is:
-
-    COUNT(DISTINCT CASE
-        WHEN event_type = 'purchase' THEN session_id
-    END)
-    * 100.0
-    / COUNT(DISTINCT session_id)
-
-Do NOT:
-
-- use correlated EXISTS
-- use CROSS JOIN between large session sets
-- use UNION ALL
-- use NOT IN against the events table
-- restrict the denominator to cart/purchase events
-- change the metric definition
-
-
-Before returning the SQL, verify:
-
-1. Does the query answer exactly what the original question asks?
-2. If it is a count question, does it return exactly one requested count?
-3. If it is a ratio/percentage question, are both numerator and denominator
-   correct?
-4. Are both based on the retrieved business definition?
-5. Did I accidentally filter the denominator?
-6. Is there a correlated subquery that can be removed?
-7. Is there a Cartesian product?
-8. Is there unnecessary UNION/UNION ALL?
-9. Can conditional aggregation solve this more efficiently?
-
-Generate the corrected PostgreSQL SQL now.
-
-Respond ONLY with JSON:
-
-{{"sql": "SELECT ..."}}
+- AVG must be over users.age
+- users must have at least one event
+- do not add a purchase condition
+- do not add an age threshold
+- do not GROUP BY user
 """
 
     # ========================================================
-    # CALL LLM
+    # USER PROMPT
+    # ========================================================
+
+    user_prompt = f"""
+USER QUESTION:
+
+{question}
+
+
+============================================================
+DATABASE SCHEMA
+============================================================
+
+{schema}
+
+
+============================================================
+RETRIEVED CONTEXT
+============================================================
+
+{retrieved_context}
+
+{retry_section}
+
+============================================================
+TASK
+============================================================
+
+Generate exactly ONE PostgreSQL SELECT query.
+
+Important semantics:
+
+EVENT = row in events.
+
+SESSION = distinct session_id.
+
+USER = row in users.
+
+events.user_id = users.id.
+
+For event counts use COUNT(*).
+
+For:
+
+How many events were generated by users older than N?
+
+Count events and filter users.age > N.
+
+Correct structure:
+
+SELECT COUNT(*)
+FROM events
+WHERE user_id IN (
+    SELECT id
+    FROM users
+    WHERE age > N
+);
+
+For:
+
+What is the average age of users who generated at least one event?
+
+Calculate AVG(users.age), restricted to users who have at least
+one matching event.
+
+Correct structure:
+
+SELECT AVG(age) AS average_age
+FROM users
+WHERE id IN (
+    SELECT DISTINCT user_id
+    FROM events
+    WHERE user_id IS NOT NULL
+);
+
+Do not add a purchase filter.
+
+Do not add an age threshold.
+
+Do not GROUP BY user.
+
+For session-to-purchase conversion:
+
+distinct purchasing sessions / distinct sessions * 100.
+
+For month filters:
+
+created_at >= first day of month
+AND created_at < first day of next month
+
+Use only schema columns that actually exist.
+
+The events table contains id, not event_id.
+
+Return ONLY JSON.
+"""
+
+    # ========================================================
+    # LLM CALL
     # ========================================================
 
     try:
 
-        # ----------------------------------------------------
-        # Measure both cumulative and per-attempt latency
-        # ----------------------------------------------------
-
         with measure_latency(
             latencies,
-            "sql_generation",
-            attempt=attempt,
+            "generator",
+            attempt=retry_count,
             retry_latencies=retry_latencies
         ):
+
             response = client.complete(
                 SYSTEM_PROMPT,
                 [
@@ -669,67 +1032,123 @@ Respond ONLY with JSON:
                         "role": "user",
                         "content": user_prompt
                     }
-                ]
+                ],
+                max_tokens=256,
+                think=False
             )
 
-        # ----------------------------------------------------
-        # Debug output
-        # ----------------------------------------------------
+        response_text = response.content
 
         print()
         print("RAW LLM RESPONSE:")
-        print(response.content)
-
-        # ----------------------------------------------------
-        # Parse SQL
-        # ----------------------------------------------------
-
-        sql = parse_sql(
-            response.content
-        )
-
-        # ----------------------------------------------------
-        # SQL parsing failure
-        # ----------------------------------------------------
-
-        if sql is None:
-
-            return {
-                "sql": None,
-                "error": (
-                    "Could not parse SQL from LLM response."
-                ),
-                "error_type": (
-                    ErrorType.SQL_GENERATION_ERROR.value
-                ),
-                "latencies": latencies,
-                "retry_latencies": retry_latencies,
-            }
-
-        # ----------------------------------------------------
-        # Successful SQL generation
-        # ----------------------------------------------------
-
-        return {
-            "sql": sql,
-            "error": None,
-            "error_type": ErrorType.NONE.value,
-            "latencies": latencies,
-            "retry_latencies": retry_latencies,
-        }
-
-    # --------------------------------------------------------
-    # LLM failure
-    # --------------------------------------------------------
+        print(response_text)
 
     except Exception as e:
 
         return {
-            "sql": None,
+            "sql": "",
+            "previous_sql": previous_sql,
             "error": (
-                f"SQL generation failed: {str(e)}"
+                f"SQL generator LLM failed: {str(e)}"
             ),
             "error_type": ErrorType.LLM_ERROR.value,
             "latencies": latencies,
             "retry_latencies": retry_latencies,
         }
+
+    # ========================================================
+    # PARSE
+    # ========================================================
+
+    try:
+
+        sql = parse_sql(
+            response_text
+        )
+
+    except ValueError as e:
+
+        return {
+            "sql": "",
+            "previous_sql": previous_sql,
+            "error": str(e),
+            "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
+        }
+
+    # ========================================================
+    # SANITIZATION
+    # ========================================================
+
+    normalized_sql = sql.lower().strip()
+
+    if ";" in normalized_sql:
+
+        return {
+            "sql": "",
+            "previous_sql": previous_sql,
+            "error": (
+                "Generated SQL contains multiple statements."
+            ),
+            "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
+        }
+
+    if not (
+        normalized_sql.startswith("select")
+        or normalized_sql.startswith("with")
+    ):
+
+        return {
+            "sql": "",
+            "previous_sql": previous_sql,
+            "error": (
+                "Generated SQL is not a SELECT query."
+            ),
+            "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+            "latencies": latencies,
+            "retry_latencies": retry_latencies,
+        }
+
+    destructive_keywords = [
+        "insert ",
+        "update ",
+        "delete ",
+        "drop ",
+        "alter ",
+        "truncate ",
+        "create ",
+        "grant ",
+        "revoke ",
+    ]
+
+    for keyword in destructive_keywords:
+
+        if keyword in normalized_sql:
+
+            return {
+                "sql": "",
+                "previous_sql": previous_sql,
+                "error": (
+                    "Generated SQL contains a prohibited "
+                    f"keyword: {keyword.strip()}"
+                ),
+                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+                "latencies": latencies,
+                "retry_latencies": retry_latencies,
+            }
+
+    # ========================================================
+    # RESULT
+    # ========================================================
+
+    return {
+        "sql": sql,
+        "previous_sql": previous_sql,
+        "error": None,
+        "error_type": ErrorType.NONE.value,
+        "latencies": latencies,
+        "retry_latencies": retry_latencies,
+    }
