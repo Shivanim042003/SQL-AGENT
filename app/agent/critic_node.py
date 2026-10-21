@@ -57,6 +57,12 @@ Do not invent:
 SCHEMA SEMANTICS
 ============================================================
 
+COUNT(DISTINCT session_id) counts distinct sessions, not events.
+A WHERE filter on event_type only restricts which events are considered;
+it does not change what is being counted.
+Do not reject such a query for counting events.
+
+
 EVENT:
 One row in events.
 
