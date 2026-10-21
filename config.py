@@ -36,7 +36,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
-    "http://localhost:11434"
+    "http://127.0.0.1:11434"
 )
 
 
