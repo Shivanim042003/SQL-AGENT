@@ -8,6 +8,7 @@ from app.agent.retrieval_node import retrieve_context
 from app.agent.sql_generator import generate_sql
 from app.agent.executor_node import execute_sql
 from app.agent.critic_node import critique_sql
+from app.agent.fast_path import critique_with_fast_path
 from app.agent.answer_node import format_answer
 
 from app.core.timing import measure_latency
@@ -170,7 +171,7 @@ def build_graph():
 
     workflow.add_node(
         "critique_sql",
-        critique_sql
+        critique_with_fast_path
     )
 
     workflow.add_node(

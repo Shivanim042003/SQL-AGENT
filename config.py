@@ -75,3 +75,10 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 READONLY_DATABASE_URL = os.getenv(
     "READONLY_DATABASE_URL"
 )
+
+# =========================
+# Optional Fast Paths
+# =========================
+
+# When "1", skip the LLM critic for plain single-table COUNT(*) questions.
+SKIP_CRITIC_FOR_SIMPLE_COUNTS = os.getenv("SKIP_CRITIC_FOR_SIMPLE_COUNTS", "0") == "1"
