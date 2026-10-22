@@ -86,12 +86,40 @@ def test_embeddings_ordered_by_index():
     assert _emb(handler).embed(["a", "b"]) == [[1, 2, 3], [4, 5, 6]]
 
 
-def test_embeddings_wrong_dimension_rejected():
+def test_embeddings_too_short_rejected():
     def handler(request):
         return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1, 2]}]})
 
     with pytest.raises(ValueError, match="dimensions"):
         _emb(handler).embed(["a"])
+
+
+def test_embeddings_longer_vector_truncated_and_normalised():
+    def handler(request):
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [3, 4, 9, 9]}]})
+
+    v = _emb(handler, dims=2).embed(["a"])[0]
+    assert v == pytest.approx([0.6, 0.8])
+
+
+def test_embeddings_batched_and_retried(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    sizes = []
+
+    def handler(request):
+        import json
+        n = len(json.loads(request.read())["input"])
+        if not sizes:
+            sizes.append("429")
+            return httpx.Response(429)
+        sizes.append(n)
+        return httpx.Response(200, json={"data": [
+            {"index": i, "embedding": [1, 2, 3]} for i in range(n)
+        ]})
+
+    out = _emb(handler).embed([str(i) for i in range(120)])
+    assert len(out) == 120
+    assert sizes == ["429", 50, 50, 20]
 
 
 def test_rate_limiter_per_minute_and_daily_cap():

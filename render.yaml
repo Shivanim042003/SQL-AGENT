@@ -25,9 +25,9 @@ services:
       - key: EMBEDDING_PROVIDER
         value: openai_compatible
       - key: EMBEDDING_BASE_URL
-        value: https://api.mistral.ai/v1
+        value: https://generativelanguage.googleapis.com/v1beta/openai
       - key: EMBEDDING_MODEL
-        value: mistral-embed
+        value: gemini-embedding-001
       - key: EMBEDDING_DIMENSIONS
         value: "1024"
       - key: EMBEDDING_API_KEY

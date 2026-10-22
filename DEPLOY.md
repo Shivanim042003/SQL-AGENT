@@ -1,13 +1,13 @@
 # Deploying on Render (free)
 
-Layout: static UI + FastAPI API on Render, Postgres (pgvector) on Neon, hosted LLM (Groq) and embeddings (Mistral).
+Layout: static UI + FastAPI API on Render, Postgres (pgvector) on Neon, hosted LLM (Groq) and embeddings (Google Gemini).
 Free-tier caveats: the API sleeps after 15 min idle (about 1 min to wake), has 512 MB RAM, and Neon free storage is 1 GB.
 Hosted models differ from the local qwen3:8b, so re-run the evals (step 6) before trusting results.
 
 ## 1. Accounts and keys
 - Neon: create a project, then a database named `sql_agent`. Copy the **direct** (non-pooled) connection string.
 - Groq: create an API key. The blueprint uses `openai/gpt-oss-120b` (on the free plan: 30 requests/min, 1K requests/day, 8K tokens/min, 200K tokens/day). Models on the free list change; check Groq's Rate Limits page.
-- Mistral: create an API key (embeddings use `mistral-embed`, 1024 dimensions, matching `vector(1024)`).
+- Google AI Studio (aistudio.google.com/apikey): create a free API key for embeddings. `gemini-embedding-001` returns 3072 numbers; the client truncates to 1024 and re-normalises to match `vector(1024)`. Note: on the free tier Google may use prompts to improve its products, so questions typed into the demo go to Google.
 
 ## 2. Prepare the database (from the repo folder)
 Use the Neon owner URL as `DATABASE_URL` in a **separate** env file or shell session, not your local `.env`:
@@ -26,10 +26,10 @@ Vectors from different models are not compatible, so rebuild them with the same 
 
 ```
 $env:EMBEDDING_PROVIDER = "openai_compatible"
-$env:EMBEDDING_BASE_URL = "https://api.mistral.ai/v1"
-$env:EMBEDDING_MODEL = "mistral-embed"
+$env:EMBEDDING_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+$env:EMBEDDING_MODEL = "gemini-embedding-001"
 $env:EMBEDDING_DIMENSIONS = "1024"
-$env:EMBEDDING_API_KEY = "<mistral key>"
+$env:EMBEDDING_API_KEY = "<google key>"
 python data/loaders/load_embeddings.py
 ```
 
@@ -42,7 +42,7 @@ Build `READONLY_DATABASE_URL` and `RETRIEVAL_DATABASE_URL` from the Neon host wi
 
 ## 5. Render
 Push to GitHub, then Render > New > Blueprint > pick the repo. Fill the `sync: false` variables:
-`LLM_API_KEY`, `EMBEDDING_API_KEY`, `DATABASE_URL`, `READONLY_DATABASE_URL`, `RETRIEVAL_DATABASE_URL`, `CORS_ORIGINS` (the UI URL, no trailing slash), and on the UI service `VITE_API_URL` (the API URL).
+`LLM_API_KEY`, `EMBEDDING_API_KEY` (Google key), `DATABASE_URL`, `READONLY_DATABASE_URL`, `RETRIEVAL_DATABASE_URL`, `CORS_ORIGINS` (the UI URL, no trailing slash), and on the UI service `VITE_API_URL` (the API URL).
 Deploy the API first, then set `VITE_API_URL` and deploy the UI.
 
 ## 6. Verify
