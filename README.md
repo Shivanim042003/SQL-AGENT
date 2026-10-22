@@ -94,6 +94,8 @@ npm run dev
 | `SKIP_CRITIC_FOR_SIMPLE_COUNTS` | `1` enables the two critic shortcuts below. Default off. |
 
 Ollama setting that matters for speed: `OLLAMA_NUM_PARALLEL=2`. With one slot, every request paid about 4 s to switch between the short intent prompt and the long generator prompt; two slots removed most of it. The Ollama Windows install reads it from the user environment variables.
+
+Two more Ollama settings reduce the overhead around long prompts: `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`. On the author's iGPU they made simple questions that use the critic about 20% faster (roughly 2.5-4.7 s each) and the summed median about 7% faster; retried and multi-step questions did not change. With them on, the repeated eval (5 trials) still passed 50/50, answered-question latency was p50 12.8 s / p90 23.8 s, and the red-team set passed. A quantized KV cache can change model output slightly, so re-run the evals after changing these.
 ## Critic shortcuts (opt-in)
 
 When `SKIP_CRITIC_FOR_SIMPLE_COUNTS=1`, the LLM critic is skipped in exactly two cases (`app/agent/fast_path.py`):
