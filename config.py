@@ -44,6 +44,14 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
 
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 
+# Optional. Sent as "reasoning_effort" (low/medium/high) when set; for hosted
+# reasoning models such as gpt-oss. Empty = not sent.
+LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "")
+
+# Lower bound for max_tokens. Reasoning models spend output tokens on thinking,
+# so the generator's small budget (256) can leave an empty answer.
+LLM_MIN_MAX_TOKENS = int(os.getenv("LLM_MIN_MAX_TOKENS", "0") or 0)
+
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
     "http://127.0.0.1:11434"

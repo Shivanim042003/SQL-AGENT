@@ -51,9 +51,11 @@ class OpenAICompatibleClient(LLMClient):
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, *messages],
-            "max_tokens": max_tokens,
+            "max_tokens": max(max_tokens, config.LLM_MIN_MAX_TOKENS),
             "temperature": 0,
         }
+        if config.LLM_REASONING_EFFORT:
+            payload["reasoning_effort"] = config.LLM_REASONING_EFFORT
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/chat/completions"
 

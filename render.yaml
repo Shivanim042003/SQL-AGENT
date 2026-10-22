@@ -15,7 +15,11 @@ services:
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
-        sync: false
+        value: openai/gpt-oss-120b
+      - key: LLM_REASONING_EFFORT
+        value: low
+      - key: LLM_MIN_MAX_TOKENS
+        value: "1024"
       - key: LLM_API_KEY
         sync: false
       - key: EMBEDDING_PROVIDER
@@ -37,9 +41,9 @@ services:
       - key: CORS_ORIGINS
         sync: false
       - key: RATE_LIMIT_PER_MINUTE
-        value: "6"
+        value: "2"
       - key: DAILY_REQUEST_CAP
-        value: "300"
+        value: "40"
       - key: SKIP_CRITIC_FOR_SIMPLE_COUNTS
         value: "1"
 

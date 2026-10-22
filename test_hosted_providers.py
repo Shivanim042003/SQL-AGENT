@@ -103,3 +103,32 @@ def test_rate_limiter_per_minute_and_daily_cap():
     assert not rl.check("c")[0]          # daily cap reached
     t[0] += 86400
     assert rl.check("c")[0]              # new day resets
+
+
+def test_reasoning_effort_and_token_floor(monkeypatch):
+    import json
+    monkeypatch.setattr("config.LLM_REASONING_EFFORT", "low")
+    monkeypatch.setattr("config.LLM_MIN_MAX_TOKENS", 1024)
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.read()))
+        return _ok("x")
+
+    _client(handler).complete("s", [], max_tokens=256)
+    assert seen["reasoning_effort"] == "low"
+    assert seen["max_tokens"] == 1024
+
+
+def test_reasoning_effort_omitted_by_default(monkeypatch):
+    import json
+    monkeypatch.setattr("config.LLM_REASONING_EFFORT", "")
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.read()))
+        return _ok("x")
+
+    _client(handler).complete("s", [], max_tokens=256)
+    assert "reasoning_effort" not in seen
+    assert seen["max_tokens"] == 256

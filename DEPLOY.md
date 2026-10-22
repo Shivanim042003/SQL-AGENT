@@ -6,7 +6,7 @@ Hosted models differ from the local qwen3:8b, so re-run the evals (step 6) befor
 
 ## 1. Accounts and keys
 - Neon: create a project, then a database named `sql_agent`. Copy the **direct** (non-pooled) connection string.
-- Groq: create an API key; pick a chat model ID from their console (set as `LLM_MODEL`).
+- Groq: create an API key. The blueprint uses `openai/gpt-oss-120b` (on the free plan: 30 requests/min, 1K requests/day, 8K tokens/min, 200K tokens/day). Models on the free list change; check Groq's Rate Limits page.
 - Mistral: create an API key (embeddings use `mistral-embed`, 1024 dimensions, matching `vector(1024)`).
 
 ## 2. Prepare the database (from the repo folder)
@@ -42,10 +42,11 @@ Build `READONLY_DATABASE_URL` and `RETRIEVAL_DATABASE_URL` from the Neon host wi
 
 ## 5. Render
 Push to GitHub, then Render > New > Blueprint > pick the repo. Fill the `sync: false` variables:
-`LLM_MODEL`, `LLM_API_KEY`, `EMBEDDING_API_KEY`, `DATABASE_URL`, `READONLY_DATABASE_URL`, `RETRIEVAL_DATABASE_URL`, `CORS_ORIGINS` (the UI URL, no trailing slash), and on the UI service `VITE_API_URL` (the API URL).
+`LLM_API_KEY`, `EMBEDDING_API_KEY`, `DATABASE_URL`, `READONLY_DATABASE_URL`, `RETRIEVAL_DATABASE_URL`, `CORS_ORIGINS` (the UI URL, no trailing slash), and on the UI service `VITE_API_URL` (the API URL).
 Deploy the API first, then set `VITE_API_URL` and deploy the UI.
 
 ## 6. Verify
 - `GET <api>/api/health` returns ok.
 - Run the golden and red-team evals against the hosted model (locally, with the hosted env vars set).
+- Free-tier budget: a question costs about 4K tokens, or 10K+ if it retries, against 8K tokens/min and 200K/day, so expect about 2 questions/min and 40-50/day. The defaults (`RATE_LIMIT_PER_MINUTE=2`, `DAILY_REQUEST_CAP=40`) reflect that; a 429 from the provider shows as a failed request.
 - Abuse limits: `RATE_LIMIT_PER_MINUTE` (per client) and `DAILY_REQUEST_CAP` (global) protect the free LLM quota. State is in memory, so it resets on restart.
