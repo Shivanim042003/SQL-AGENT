@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from decimal import Decimal
 
 
@@ -794,6 +795,10 @@ def main():
         results.append(
             evaluation_result
         )
+
+        # Optional pacing for rate-limited hosted models
+        # (e.g. EVAL_PAUSE_SECONDS=40 on Groq's free tier).
+        time.sleep(float(os.getenv("EVAL_PAUSE_SECONDS", "0")))
 
     # --------------------------------------------------------
     # FINAL SUMMARY

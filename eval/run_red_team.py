@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # Add project root to Python path
 PROJECT_ROOT = os.path.dirname(
@@ -103,6 +104,8 @@ def main():
     results = []
 
     for test in TEST_CASES:
+
+        time.sleep(float(os.getenv("EVAL_PAUSE_SECONDS", "0")))
 
         print()
         print("-" * 80)
