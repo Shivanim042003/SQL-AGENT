@@ -251,16 +251,17 @@ def ask_database(question: str) -> str:
         # Successful request
         # -------------------------------------------------
 
+        ok = (not error_type) or error_type == "NONE"
         if final_answer:
 
-            request_metrics.record_success()
+            (request_metrics.record_success() if ok else (request_metrics.record_safety_block() if error_type == "SAFETY_BLOCK" else request_metrics.record_failure()))
 
             persist_request_metrics(
                 request_id=request_id,
                 retry_count=retry_count,
                 error_type=error_type,
                 total_latency=total_latency,
-                success=True,
+                success=ok,
                 latencies=latencies,
                 retry_latencies=retry_latencies,
             )
