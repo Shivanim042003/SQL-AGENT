@@ -16,3 +16,4 @@ except ImportError:
     pass
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/test")
+os.environ.setdefault("READONLY_DATABASE_URL", "postgresql://readonly:test@127.0.0.1:5432/test")
