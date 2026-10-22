@@ -23,7 +23,13 @@ class Retriever:
         query_embedding = self.embedding_client.embed([query])[0]
 
         # Connect to PostgreSQL
-        conn = psycopg2.connect(config.DATABASE_URL)
+        if not config.RETRIEVAL_DATABASE_URL:
+            raise RuntimeError(
+                "RETRIEVAL_DATABASE_URL is not set -- "
+                "refusing to fall back to the admin connection."
+            )
+
+        conn = psycopg2.connect(config.RETRIEVAL_DATABASE_URL)
         cur = conn.cursor()
 
         try:

@@ -82,3 +82,7 @@ READONLY_DATABASE_URL = os.getenv(
 
 # When "1", skip the LLM critic for plain single-table COUNT(*) questions.
 SKIP_CRITIC_FOR_SIMPLE_COUNTS = os.getenv("SKIP_CRITIC_FOR_SIMPLE_COUNTS", "0") == "1"
+# Retrieval Database Configuration
+# =========================
+
+RETRIEVAL_DATABASE_URL = os.getenv("RETRIEVAL_DATABASE_URL")
