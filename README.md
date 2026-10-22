@@ -114,7 +114,7 @@ python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency ov
 
 The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies placeholder `DATABASE_URL` and `READONLY_DATABASE_URL` values.
 
-The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain counts about 4-7 s, multi-step questions about 10-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
+The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain COUNT(*) questions that take the shortcut about 3-8 s; other questions about 11-23 s, mostly spent processing the 1.5-2k-token generator and critic prompts on the iGPU. Questions that need a retry take 25-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
 
 ## Limitations
 
