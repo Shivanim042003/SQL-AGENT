@@ -40,7 +40,7 @@ Three independent layers, each of which must pass:
 Role definitions are in `infra/create_readonly_role.sql` and `infra/create_retrieval_role.sql`. Passwords are supplied at run time (psql variables) and are never committed. Keep credentials in `.env`, which is git-ignored.
 ## Requirements
 
-- Python 3 environment (conda or venv)
+- Python 3.12 or newer in a conda or venv environment (the pinned `numpy` needs 3.12+)
 - Docker (for Postgres with pgvector, image `pgvector/pgvector:pg16`)
 - [Ollama](https://ollama.com) with these models pulled:
   `ollama pull qwen3:8b` and `ollama pull qwen3-embedding:0.6b`
