@@ -151,6 +151,7 @@ def test_reasoning_effort_and_token_floor(monkeypatch):
 def test_reasoning_effort_omitted_by_default(monkeypatch):
     import json
     monkeypatch.setattr("config.LLM_REASONING_EFFORT", "")
+    monkeypatch.setattr("config.LLM_MIN_MAX_TOKENS", 0)
     seen = {}
 
     def handler(request):
