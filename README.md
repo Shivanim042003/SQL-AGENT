@@ -33,7 +33,7 @@ Three independent layers, each of which must pass:
 1. **Intent check** (LLM, fail-closed) refuses destructive requests before any SQL is generated.
 2. **Generator checks** only allow a single SELECT statement.
 3. **Database roles** enforce it regardless of the model:
-   - `app_readonly` runs generated SQL (SELECT only, 15 s statement timeout).
+   - `app_readonly` runs generated SQL: SELECT only, on the seven dataset tables, and the executor applies a 15 s query timeout.
    - `app_retrieval` is used by retrieval and can SELECT only from `document_embeddings`.
    - The owner connection (`DATABASE_URL`) is used for loading data, schema introspection and metrics, never for generated SQL.
 
@@ -54,13 +54,25 @@ pip install -r requirements-dev.txt        # tests
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Create `.env` in the repo root (see the table below), then, against the database from `DATABASE_URL`:
+1. **Create `.env`** in the repo root with the variables in the Configuration table. `POSTGRES_DB` must be `sql_agent`, because the role scripts name that database. Fill in the two role URLs in step 8.
+2. **Add the data.** The repository neither ships nor downloads the thelook CSV files. Put these seven files in `data/raw/thelook/`: `distribution_centers.csv`, `events.csv`, `inventory_items.csv`, `order_items.csv`, `orders.csv`, `products.csv`, `users.csv`.
+3. *(Optional)* **Check the CSVs:** `python data/loaders/verify_schema.py` tests that the key columns are unique and non-null before anything is loaded.
+4. **Load the tables:** `python data/loaders/load_data.py` loads every CSV in that folder into a table named after the file.
+5. **Create indexes:** apply `infra/create_indexes.sql` (indexes on `events.session_id` and `events.event_type`).
+6. **Create the retrieval table:** apply `infra/create_retrieval_table.sql`. It enables pgvector and (re)creates `document_embeddings`; it drops the table first, so running it again deletes stored embeddings.
+7. **Build embeddings:** `python data/loaders/load_embeddings.py` chunks `data_dictionary.md` and `business_glossary.md`, embeds them with Ollama (the embedding model must be pulled and Ollama running) and stores them in `document_embeddings`.
+8. **Create the roles** (after the tables exist, because they `GRANT` on them). Each script takes its password as a psql variable and should be run as the admin user:
+   ```
+   psql -v ON_ERROR_STOP=1 -v ro_password='CHOOSE-A-PASSWORD' -f infra/create_readonly_role.sql
+   psql -v ON_ERROR_STOP=1 -v retr_password='CHOOSE-A-PASSWORD' -f infra/create_retrieval_role.sql
+   ```
+   Then set `READONLY_DATABASE_URL` and `RETRIEVAL_DATABASE_URL` in `.env` to connect as `app_readonly` and `app_retrieval` with those passwords.
 
-1. Load the dataset: `python data/loaders/load_data.py`
-2. Apply `infra/create_retrieval_table.sql`, then `infra/create_indexes.sql`
-3. Build embeddings: `python data/loaders/load_embeddings.py`
-4. Create the roles: `infra/create_readonly_role.sql` and `infra/create_retrieval_role.sql` (each documents how to pass its password), and put the resulting URLs in `.env`
-5. Check the schema: `python data/loaders/verify_schema.py`
+Steps 5, 6 and 8 are SQL files. Run them with `psql` against the database in `DATABASE_URL` as the admin user, or, if you have no local `psql`, pipe the file into the container (PowerShell):
+
+```
+Get-Content infra\create_indexes.sql | docker compose -f infra/docker-compose.yml exec -T postgres psql -U <POSTGRES_USER> -d sql_agent
+```
 
 Start the API:
 
