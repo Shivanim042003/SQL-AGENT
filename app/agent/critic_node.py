@@ -332,19 +332,16 @@ valid=true when:
 OUTPUT
 ============================================================
 
-Return ONLY:
+Return ONLY JSON, with the fields in EXACTLY this order:
 
 {
-  "valid": true,
-  "feedback": ""
+  "feedback": "<one sentence: does the SQL answer the question? empty if clearly correct>",
+  "valid": <true or false>
 }
 
-or:
-
-{
-  "valid": false,
-  "feedback": "specific evidence-based explanation"
-}
+Write "feedback" first, then decide "valid".
+"valid" must be false only if your feedback describes a real problem.
+If your feedback says the SQL is correct, "valid" must be true.
 """
 
 
