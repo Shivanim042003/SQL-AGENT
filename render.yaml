@@ -1,0 +1,55 @@
+services:
+  # FastAPI backend (free plan: sleeps after 15 min idle, ~1 min cold start)
+  - type: web
+    name: sql-agent-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: LLM_PROVIDER
+        value: openai_compatible
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        value: openai_compatible
+      - key: EMBEDDING_BASE_URL
+        value: https://api.mistral.ai/v1
+      - key: EMBEDDING_MODEL
+        value: mistral-embed
+      - key: EMBEDDING_DIMENSIONS
+        value: "1024"
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: READONLY_DATABASE_URL
+        sync: false
+      - key: RETRIEVAL_DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "6"
+      - key: DAILY_REQUEST_CAP
+        value: "300"
+      - key: SKIP_CRITIC_FOR_SIMPLE_COUNTS
+        value: "1"
+
+  # React UI (static site, free)
+  - type: web
+    name: sql-agent-ui
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false

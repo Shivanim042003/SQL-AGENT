@@ -1,6 +1,8 @@
 import { useState } from "react";
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 function App() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -17,7 +19,7 @@ function App() {
     setAnswer("");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/query", {
+      const response = await fetch(`${API_URL}/api/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -26,6 +28,12 @@ function App() {
           question: question.trim(),
         }),
       });
+
+      if (response.status === 429) {
+        const body = await response.json().catch(() => ({}));
+        setError(body.detail || "Too many requests. Please try again shortly.");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Request failed");

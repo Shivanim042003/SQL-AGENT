@@ -2,6 +2,7 @@ import config
 
 from app.llm.client import LLMClient
 from app.llm.ollama_client import OllamaClient
+from app.llm.openai_compatible_client import OpenAICompatibleClient
 
 
 def get_llm_client(model: str | None = None) -> LLMClient:
@@ -9,6 +10,9 @@ def get_llm_client(model: str | None = None) -> LLMClient:
 
     if provider == "ollama":
         return OllamaClient(model=model)
+
+    if provider == "openai_compatible":
+        return OpenAICompatibleClient(model=model)
 
     if provider == "anthropic":
         raise NotImplementedError(

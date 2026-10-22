@@ -38,6 +38,12 @@ LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 # is fine here; defaults to LLM_MODEL so behaviour is unchanged unless set.
 INTENT_MODEL = os.getenv("INTENT_MODEL") or LLM_MODEL
 
+# Hosted, OpenAI-compatible provider (LLM_PROVIDER=openai_compatible).
+# Example (Groq): LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
+
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
     "http://127.0.0.1:11434"
@@ -57,6 +63,32 @@ EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
     "qwen3-embedding:0.6b"
 )
+
+
+# Hosted embeddings (EMBEDDING_PROVIDER=openai_compatible).
+EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "")
+
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+
+# If set, vectors of any other length are rejected (table is vector(1024)).
+EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "0") or 0)
+
+
+# =========================
+# Public API Settings
+# =========================
+
+# Comma-separated list of allowed browser origins.
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if o.strip()
+]
+
+# Per-client requests per minute, and a global cap per day (0 disables).
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "6"))
+
+DAILY_REQUEST_CAP = int(os.getenv("DAILY_REQUEST_CAP", "0"))
 
 
 # =========================

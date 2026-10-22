@@ -90,6 +90,10 @@ npm install
 npm run dev
 ```
 
+## Deployment
+
+See [DEPLOY.md](DEPLOY.md) for a free Render + Neon + Groq setup (`render.yaml` included).
+
 ## Configuration
 
 | Variable | Purpose |
@@ -103,6 +107,10 @@ npm run dev
 | `DATABASE_URL` | Owner connection: data loading, schema info, metrics. |
 | `READONLY_DATABASE_URL` | `app_readonly` connection used to execute generated SQL. |
 | `RETRIEVAL_DATABASE_URL` | `app_retrieval` connection. Required; retrieval refuses to start without it. |
+| `LLM_BASE_URL`, `LLM_API_KEY` | Hosted OpenAI-compatible chat API (`LLM_PROVIDER=openai_compatible`). |
+| `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_DIMENSIONS` | Hosted embeddings (`EMBEDDING_PROVIDER=openai_compatible`); dimensions must match `vector(1024)`. |
+| `CORS_ORIGINS`, `RATE_LIMIT_PER_MINUTE`, `DAILY_REQUEST_CAP` | Public-API settings: allowed origins, per-client and global request limits. |
+| `VITE_API_URL` | Frontend build setting: API base URL (default `http://127.0.0.1:8000`). |
 | `SKIP_CRITIC_FOR_SIMPLE_COUNTS` | `1` enables the two critic shortcuts below. Default off. |
 
 Ollama setting that matters for speed: `OLLAMA_NUM_PARALLEL=2`. With one slot, every request paid about 4 s to switch between the short intent prompt and the long generator prompt; two slots removed most of it. The Ollama Windows install reads it from the user environment variables.
