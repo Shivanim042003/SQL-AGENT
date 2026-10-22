@@ -33,6 +33,11 @@ def route_after_intent(state: AgentState):
     if state.get("is_destructive"):
         return "format_answer"
 
+    # Fail closed: if the safety check itself failed (LLM error or an
+    # unparseable reply), stop instead of continuing to SQL generation.
+    if state.get("error_type") == "LLM_ERROR":
+        return "format_answer"
+
     return "load_schema"
 
 

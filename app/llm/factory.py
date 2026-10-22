@@ -4,11 +4,11 @@ from app.llm.client import LLMClient
 from app.llm.ollama_client import OllamaClient
 
 
-def get_llm_client() -> LLMClient:
+def get_llm_client(model: str | None = None) -> LLMClient:
     provider = config.LLM_PROVIDER.lower()
 
     if provider == "ollama":
-        return OllamaClient()
+        return OllamaClient(model=model)
 
     if provider == "anthropic":
         raise NotImplementedError(
