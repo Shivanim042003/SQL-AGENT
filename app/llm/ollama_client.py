@@ -1,7 +1,16 @@
+import logging
+import time
+
 from ollama import Client
 
 import config
 from app.llm.client import LLMClient, LLMResponse
+
+logger = logging.getLogger(__name__)
+
+
+def _seconds(response, field: str) -> float:
+    return (getattr(response, field, None) or 0) / 1e9
 
 
 class OllamaClient(LLMClient):
@@ -29,6 +38,8 @@ class OllamaClient(LLMClient):
             *messages
         ]
 
+        started = time.perf_counter()
+
         response = self.client.chat(
             model=self.model,
             messages=ollama_messages,
@@ -36,6 +47,20 @@ class OllamaClient(LLMClient):
             options={
                 "num_predict": max_tokens
             }
+        )
+
+        wall = time.perf_counter() - started
+        logger.info(
+            "llm_call | model=%s | wall=%.2fs | server_total=%.2fs | load=%.2fs | "
+            "prefill=%.2fs (%s tok) | decode=%.2fs (%s tok)",
+            self.model,
+            wall,
+            _seconds(response, "total_duration"),
+            _seconds(response, "load_duration"),
+            _seconds(response, "prompt_eval_duration"),
+            getattr(response, "prompt_eval_count", None),
+            _seconds(response, "eval_duration"),
+            getattr(response, "eval_count", None),
         )
 
         return LLMResponse(

@@ -57,6 +57,12 @@ Do not invent:
 SCHEMA SEMANTICS
 ============================================================
 
+COUNT(DISTINCT session_id) counts distinct sessions, not events.
+A WHERE filter on event_type only restricts which events are considered;
+it does not change what is being counted.
+Do not reject such a query for counting events.
+
+
 EVENT:
 One row in events.
 
@@ -326,19 +332,16 @@ valid=true when:
 OUTPUT
 ============================================================
 
-Return ONLY:
+Return ONLY JSON, with the fields in EXACTLY this order:
 
 {
-  "valid": true,
-  "feedback": ""
+  "feedback": "<one sentence: does the SQL answer the question? empty if clearly correct>",
+  "valid": <true or false>
 }
 
-or:
-
-{
-  "valid": false,
-  "feedback": "specific evidence-based explanation"
-}
+Write "feedback" first, then decide "valid".
+"valid" must be false only if your feedback describes a real problem.
+If your feedback says the SQL is correct, "valid" must be true.
 """
 
 
@@ -1068,20 +1071,6 @@ def critique_sql(state: AgentState) -> dict:
 USER QUESTION:
 
 {question}
-
-
-============================================================
-DATABASE SCHEMA
-============================================================
-
-{schema}
-
-
-============================================================
-RETRIEVED CONTEXT
-============================================================
-
-{retrieved_context}
 
 
 ============================================================
