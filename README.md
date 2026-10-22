@@ -60,6 +60,7 @@ docker compose -f infra/docker-compose.yml up -d
 4. **Load the tables:** `python data/loaders/load_data.py` loads every CSV in that folder into a table named after the file.
 5. **Create indexes:** apply `infra/create_indexes.sql` (indexes on `events.session_id` and `events.event_type`).
 6. **Create the retrieval table:** apply `infra/create_retrieval_table.sql`. It enables pgvector and (re)creates `document_embeddings`; it drops the table first, so running it again deletes stored embeddings.
+   Also apply `infra/create_metrics_table.sql` (creates `agent_request_metrics`; without it, metrics are not recorded).
 7. **Build embeddings:** `python data/loaders/load_embeddings.py` chunks `data_dictionary.md` and `business_glossary.md`, embeds them with Ollama (the embedding model must be pulled and Ollama running) and stores them in `document_embeddings`.
 8. **Create the roles** (after the tables exist, because they `GRANT` on them). Each script takes its password as a psql variable and should be run as the admin user:
    ```
@@ -68,7 +69,7 @@ docker compose -f infra/docker-compose.yml up -d
    ```
    Then set `READONLY_DATABASE_URL` and `RETRIEVAL_DATABASE_URL` in `.env` to connect as `app_readonly` and `app_retrieval` with those passwords.
 
-Steps 5, 6 and 8 are SQL files. Run them with `psql` against the database in `DATABASE_URL` as the admin user, or, if you have no local `psql`, pipe the file into the container (PowerShell):
+The SQL steps (5, 6, 8 and the metrics table) are SQL files. Run them with `psql` against the database in `DATABASE_URL` as the admin user, or, if you have no local `psql`, pipe the file into the container (PowerShell):
 
 ```
 Get-Content infra\create_indexes.sql | docker compose -f infra/docker-compose.yml exec -T postgres psql -U <POSTGRES_USER> -d sql_agent

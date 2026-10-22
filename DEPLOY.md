@@ -17,6 +17,7 @@ $env:DATABASE_URL = "<neon owner url>"
 python data/loaders/load_data.py
 psql $env:DATABASE_URL -f infra/create_retrieval_table.sql
 psql $env:DATABASE_URL -f infra/create_indexes.sql
+psql $env:DATABASE_URL -f infra/create_metrics_table.sql
 ```
 
 The full dataset may exceed 1 GB. Check with `select pg_size_pretty(pg_database_size(current_database()))`; if it does not fit, load a subset first (for example fewer rows per table).
