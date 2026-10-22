@@ -114,14 +114,14 @@ python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency ov
 
 The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies placeholder `DATABASE_URL` and `READONLY_DATABASE_URL` values.
 
-The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain counts about 4-7 s, multi-step questions about 10-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
+The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain counts about 4-7 s, multi-step questions about 10-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
 
 ## Limitations
 
 Please read these before trusting the numbers above.
 
 - **Small, partly tuned evaluation.** The golden set has 10 questions and the red-team set has 12. Some prompt sections and shortcuts were written while debugging these same questions, so the scores overstate general accuracy.
-- **Hardcoded shortcuts.** `deterministic_sql` shortcuts and exact-SQL acceptance rules in `critic_node.py` (for a plain distinct-session count and the conversion-rate query) pass those questions regardless of the model. The two opt-in critic shortcuts above are narrower and tested, but they are still special cases.
+- **Hardcoded shortcuts.** `deterministic_sql` shortcuts and exact-SQL acceptance rules in `critic_node.py` (for a plain distinct-session count and the conversion-rate query) would accept those exact queries without asking the model. In the recorded runs they did not trigger, because the generator's SQL carries column aliases and so does not match, and the LLM critic judged those questions. The two opt-in critic shortcuts above are narrower and tested, but they are still special cases.
 - **An 8B critic is unreliable.** It sometimes rejects correct SQL (for example, `COUNT(DISTINCT session_id) ... WHERE event_type = 'purchase'` for "sessions that contain a purchase event"). Prompt wording did not fix this; the code shortcut does for that shape only.
 - **Generator first attempts vary.** For some questions the first SQL is wrong and is fixed on retry, which is the main source of slow answers.
 - **Single dataset, single statement.** Only one dataset is configured, and only one SELECT is allowed per request.
