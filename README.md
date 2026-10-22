@@ -139,6 +139,6 @@ Please read these before trusting the numbers above.
 - **An 8B critic is unreliable.** It sometimes rejects correct SQL (for example, `COUNT(DISTINCT session_id) ... WHERE event_type = 'purchase'` for "sessions that contain a purchase event"). Prompt wording did not fix this; the code shortcut does for that shape only.
 - **Generator first attempts vary.** For some questions the first SQL is wrong and is fixed on retry, which is the main source of slow answers.
 - **Single dataset, single statement.** Only one dataset is configured, and only one SELECT is allowed per request.
-- **Development defaults.** The Docker Compose file publishes Postgres on port 5432 on all interfaces and passes the whole `.env` to the database container. Do not expose it beyond a development machine as-is.
+- **Development defaults.** The Docker Compose file publishes Postgres on 127.0.0.1 only, but still passes the whole `.env` to the database container. Do not expose it beyond a development machine as-is.
 - **Metrics use the owner connection** rather than a dedicated metrics role.
 - **The frontend hardcodes `127.0.0.1:8000`.**
