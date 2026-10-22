@@ -111,7 +111,7 @@ python eval/run_golden_eval.py         # 10 questions: easy, medium, hard, safet
 python eval/run_red_team.py            # 12 adversarial / destructive requests
 ```
 
-The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies a placeholder `DATABASE_URL`.
+The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies placeholder `DATABASE_URL` and `READONLY_DATABASE_URL` values.
 
 The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain counts about 4-7 s, multi-step questions about 10-30 s. A retry costs roughly 10-20 s more.
 
