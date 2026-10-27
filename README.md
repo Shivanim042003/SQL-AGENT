@@ -1,6 +1,6 @@
 # SQL Agent
 
-A self-correcting natural-language-to-SQL agent. You ask a question in plain English; the agent writes a PostgreSQL `SELECT`, runs it on a read-only connection, has a second model pass check the result, retries with feedback if the check fails, and returns the answer. It runs fully locally with Ollama.
+A self-correcting natural-language-to-SQL agent. You ask a question in plain English; the agent writes a PostgreSQL `SELECT`, runs it on a read-only connection, has a second model pass review the database result, retries with feedback when that critic rejects the query, and returns the result. The critic is a model judgment, not proof of correctness (it can reject good SQL and accept bad SQL; the ablation below measures how often). It runs fully locally with Ollama, and a hosted free-tier demo is described in `DEPLOY.md`.
 
 The bundled dataset is the `thelook` e-commerce data (events, orders, order items, products, users).
 
@@ -158,6 +158,10 @@ python eval/run_ablation.py --limit 5              # small trial
 python eval/run_ablation.py                        # A, B and C on all questions
 python eval/run_ablation.py --report-only          # rebuild the report
 ```
+
+**Comparison rules.** Column names and order are ignored (extra columns allowed). Row order is ignored unless the question is a top-N question, and duplicate rows must match in number. Numbers match within a small tolerance (a percentage never matches a ratio), dates compare as text, and NULL matches only NULL. Empty-result questions should be checked by hand with `--validate-reference`, because two different queries can both return nothing on one snapshot for different reasons. Ties are avoided in the question set rather than handled in the comparator.
+
+**Keep it a fair test.** Freeze the questions, reference queries, database snapshot, prompts and model before the comparison; the report prints a fingerprint of the question set. If you tune the agent against these questions afterwards, treat them as a development set and write a fresh final set. With 42 questions each one is about 2.4 percentage points, so read the counts and intervals, and repeat the run where you can.
 
 Runs resume (`records.jsonl`), and a question that crashed, for example on a rate limit, is retried on the next run. Use `--pause 3` (or `EVAL_PAUSE_SECONDS`) to stay under provider limits. Free hosted tiers have daily token caps, so run it against local Ollama, or split it with `--categories`. Results are only meaningful if you publish the numbers you actually get, including a config where retries do not help.
 

@@ -102,6 +102,8 @@ def test_summarize_counts_corrections_and_harm():
     assert s["final_correct"] == 2
     assert s["confident_wrong"] == 1  # answered and wrong
     assert s["total_retries"] == 2
+    assert s["abstained"] == 1
+    assert s["latency_p95"] == 1.0
 
 
 def test_outcome_labels():
@@ -147,7 +149,10 @@ def test_report_renders():
         {"join_01": {"category": "joins", "reference_sql": "SELECT 2"}},
     )
     assert "Fixed by retry" in text
+    assert "Abstentions" in text and "p95" in text
+    assert "Duplicate rows are kept" in text
     assert "join_01" in text and "SELECT 2" in text
+    assert "fingerprint" not in text  # only printed when supplied
 
 
 # ---------------- question set ----------------

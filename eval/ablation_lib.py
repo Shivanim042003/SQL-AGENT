@@ -162,6 +162,14 @@ def summarize(records):
     final = sum(1 for r in records if r["final_correct"])
     answered = sum(1 for r in records if r["answered"])
 
+    crashed = sum(1 for r in records if r.get("crashed"))
+
+    # No answer given (refused, or the critic never approved), excluding
+    # runs that crashed for infrastructure reasons such as rate limits.
+    abstained = sum(
+        1 for r in records if not r["answered"] and not r.get("crashed")
+    )
+
     # Wrong answers shown to the user as if verified.
     confident_wrong = sum(
         1 for r in records if r["answered"] and not r["final_correct"]
@@ -184,12 +192,15 @@ def summarize(records):
         "first_attempt_accuracy": first / total,
         "final_accuracy": final / total,
         "answered": answered,
+        "abstained": abstained,
+        "crashed": crashed,
         "confident_wrong": confident_wrong,
         "successful_corrections": fixed,
         "harmful_corrections": broken,
         "total_retries": sum(r["retries"] for r in records),
         "latency_p50": statistics.median(latencies),
         "latency_p90": _percentile(latencies, 90),
+        "latency_p95": _percentile(latencies, 95),
         "tokens_mean": statistics.mean(tokens),
         "tokens_total": sum(tokens),
     }
@@ -291,7 +302,13 @@ def _fmt_rows(rows, limit=3):
     return text if len(text) < 200 else text[:197] + "..."
 
 
-def build_report(records_by_config, config_names, questions_by_id, model_note=""):
+def build_report(
+    records_by_config,
+    config_names,
+    questions_by_id,
+    model_note="",
+    question_set_hash="",
+):
     """Render the results as markdown (pure function, easy to test)."""
 
     lines = ["# Ablation results", ""]
@@ -300,16 +317,41 @@ def build_report(records_by_config, config_names, questions_by_id, model_note=""
         lines += [model_note, ""]
 
     lines += [
-        "Correctness is decided by comparing the agent's rows with a "
-        "hand-written reference query run on the same database, never by a "
+        "How answers are compared (rules in `eval/ablation_lib.py`):",
+        "",
+        "- Column names and column order are ignored; extra columns are "
+        "allowed, but every reference column must be present with the same "
+        "values.",
+        "- Row order is ignored unless the question is a top-N/ordering "
+        "question (marked `ordered`). Duplicate rows are kept, so row counts "
+        "must match exactly.",
+        "- Numbers (int, float, decimal) compare as floats with a tolerance "
+        "of 1e-4 relative or 0.011 absolute; a percentage never matches a "
+        "ratio.",
+        "- Dates and timestamps compare as ISO text; NULL matches only NULL.",
+        "- Top-N questions where ties could change the answer are avoided "
+        "in the question set rather than handled by the comparator.",
+        "- Empty results: an empty reference matches only an empty result, "
+        "and a zero count or NULL must match exactly. Questions designed to "
+        "return nothing should be checked by hand "
+        "(`--validate-reference`) because two different queries can both "
+        "return nothing on one database snapshot for different reasons.",
+        "",
+        "Correctness is decided only by the reference query, never by a "
         "model's opinion. Shortcuts (hardcoded SQL and critic rules) are "
         "switched off for every configuration.",
         "",
+    ]
+
+    if question_set_hash:
+        lines += [f"Question set fingerprint: `{question_set_hash}`", ""]
+
+    lines += [
         "## Headline",
         "",
-        "| Config | Questions | First attempt | Final | 95% CI (final) | "
-        "Fixed by retry | Broken by retry | Wrong but shown | "
-        "Latency p50 / p90 | Tokens / question |",
+        "| Config | Correct / total | First attempt | Wrong answers returned "
+        "| Abstentions | Fixed by retry | Broken by retry "
+        "| p50 / p95 latency | Tokens / question | 95% CI (final) |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
 
@@ -322,22 +364,29 @@ def build_report(records_by_config, config_names, questions_by_id, model_note=""
         s = summarize(recs)
         summaries[name] = s
         low, high = wilson_interval(s["final_correct"], s["questions"])
+        crashed = f" (+{s['crashed']} crashed)" if s["crashed"] else ""
         lines.append(
-            f"| {name} | {s['questions']} "
-            f"| {s['first_attempt_correct']} ({_pct(s['first_attempt_accuracy'])}) "
-            f"| {s['final_correct']} ({_pct(s['final_accuracy'])}) "
-            f"| {_pct(low)} to {_pct(high)} "
-            f"| {s['successful_corrections']} | {s['harmful_corrections']} "
+            f"| {name} "
+            f"| {s['final_correct']} / {s['questions']} "
+            f"({_pct(s['final_accuracy'])}) "
+            f"| {s['first_attempt_correct']} / {s['questions']} "
             f"| {s['confident_wrong']} "
-            f"| {s['latency_p50']:.1f}s / {s['latency_p90']:.1f}s "
-            f"| {s['tokens_mean']:.0f} |"
+            f"| {s['abstained']}{crashed} "
+            f"| {s['successful_corrections']} | {s['harmful_corrections']} "
+            f"| {s['latency_p50']:.1f}s / {s['latency_p95']:.1f}s "
+            f"| {s['tokens_mean']:.0f} "
+            f"| {_pct(low)} to {_pct(high)} |"
         )
 
     lines += [
         "",
-        "*First attempt* = the first SQL the model wrote. *Final* = what the "
-        "user would be shown. *Wrong but shown* = answered, but the rows do "
-        "not match the reference. Latency includes any rate-limit waits.",
+        "*First attempt* = the first SQL the model wrote. *Correct* = what "
+        "the user would be shown matches the reference. *Wrong answers "
+        "returned* = answered, but the rows differ from the reference. "
+        "*Abstentions* = no answer was given. Latency includes any "
+        "rate-limit waits. With a small question set each question moves "
+        "the percentages by a couple of points, so read the counts and the "
+        "interval, not small differences.",
         "",
     ]
 

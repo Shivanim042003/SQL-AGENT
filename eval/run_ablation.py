@@ -24,6 +24,7 @@ Runs resume: a (config, question) pair already in records.jsonl is skipped
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -291,7 +292,14 @@ def write_report(records, config_names, refs):
         f"Model: `{config.LLM_MODEL}` via `{config.LLM_PROVIDER}`. "
         f"Run on {time.strftime('%Y-%m-%d')}."
     )
-    text = build_report(by_config, config_names, questions_by_id, note)
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            [(q["id"], q["question"], q["reference_sql"]) for q in QUESTIONS]
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    text = build_report(
+        by_config, config_names, questions_by_id, note, fingerprint
+    )
 
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(REPORT, "w", encoding="utf-8") as fh:
