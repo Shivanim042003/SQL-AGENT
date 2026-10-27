@@ -129,7 +129,7 @@ Both are covered by tests, including negative cases. Anything else goes to the L
 ## Tests and evaluation
 
 ```
-python -m pytest -q                    # 42 unit tests
+python -m pytest -q                    # unit tests (no database or model needed)
 python eval/run_golden_eval.py         # 10 questions: easy, medium, hard, safety
 python eval/run_red_team.py            # 12 adversarial / destructive requests
 python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency over repeated runs
@@ -138,6 +138,28 @@ python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency ov
 The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies placeholder `DATABASE_URL` and `READONLY_DATABASE_URL` values.
 
 The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain COUNT(*) questions that take the shortcut about 3-8 s; other questions about 11-23 s, mostly spent processing the 1.5-2k-token generator and critic prompts on the iGPU. Questions that need a retry take 25-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
+
+## Ablation: do glossary retrieval and the critic help?
+
+`eval/run_ablation.py` answers that on 42 held-out questions (joins, date boundaries, glossary definitions, empty results, harder aggregations) that are not in the golden or red-team sets. Each answer is compared with the rows of a hand-written reference query run on the same database, never with a model's opinion. The hardcoded shortcuts are switched off, so every number comes from the model.
+
+| Config | What runs |
+|---|---|
+| A | SQL generation only (no retrieval, no critic, no retries) |
+| B | A + glossary retrieval |
+| C | B + critic and up to 2 retries (the full pipeline) |
+| D | optional: critic and retries without retrieval |
+
+It reports first-attempt and final correctness (with a 95% interval), questions fixed or broken by retries, wrong answers that were shown anyway, how often the critic accepted wrong SQL or rejected correct SQL, latency, tokens, and the full SQL traces of every fixed, broken or still-wrong question (`eval/results/ablation/REPORT.md`).
+
+```
+python eval/run_ablation.py --validate-reference   # run the 42 reference queries only
+python eval/run_ablation.py --limit 5              # small trial
+python eval/run_ablation.py                        # A, B and C on all questions
+python eval/run_ablation.py --report-only          # rebuild the report
+```
+
+Runs resume (`records.jsonl`), and a question that crashed, for example on a rate limit, is retried on the next run. Use `--pause 3` (or `EVAL_PAUSE_SECONDS`) to stay under provider limits. Free hosted tiers have daily token caps, so run it against local Ollama, or split it with `--categories`. Results are only meaningful if you publish the numbers you actually get, including a config where retries do not help.
 
 ## Limitations
 
@@ -150,4 +172,4 @@ Please read these before trusting the numbers above.
 - **Single dataset, single statement.** Only one dataset is configured, and only one SELECT is allowed per request.
 - **Development defaults.** The Docker Compose file publishes Postgres on 127.0.0.1 only, but still passes the whole `.env` to the database container. Do not expose it beyond a development machine as-is.
 - **Metrics use the owner connection** rather than a dedicated metrics role.
-- **The frontend hardcodes `127.0.0.1:8000`.**
+- **No load testing.** The hosted demo is a deployed prototype with a deliberate request cap; concurrency and sustained-load behaviour have not been measured.

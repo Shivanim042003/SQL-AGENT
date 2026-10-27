@@ -41,7 +41,7 @@ def route_after_intent(state: AgentState):
     return "load_schema"
 
 
-def route_after_critic(state: AgentState):
+def route_after_critic(state: AgentState, max_retries: int = MAX_RETRIES):
     """
     Decide whether SQL is accepted or needs another attempt.
     """
@@ -87,7 +87,7 @@ def route_after_critic(state: AgentState):
     # RETRY LIMIT
     # --------------------------------------------------------
 
-    if retry_count >= MAX_RETRIES:
+    if retry_count >= max_retries:
         return "format_answer"
 
     # --------------------------------------------------------
@@ -139,7 +139,45 @@ def prepare_retry(state: AgentState) -> dict:
 # BUILD GRAPH
 # ============================================================
 
-def build_graph():
+def skip_retrieval(state: AgentState) -> dict:
+    """Ablation stand-in for retrieval: no business context is added."""
+
+    return {"retrieved_context": ""}
+
+
+def skip_critic(state: AgentState) -> dict:
+    """
+    Ablation stand-in for the critic: accept whatever executed.
+
+    The SQL counts as valid exactly when it ran without an error.
+    """
+
+    error = state.get("error")
+
+    if error:
+        return {
+            "sql_valid": False,
+            "critique": f"SQL execution failed: {error}",
+        }
+
+    return {"sql_valid": True, "critique": ""}
+
+
+def build_graph(
+    use_retrieval: bool = True,
+    use_critic: bool = True,
+    max_retries: int = MAX_RETRIES,
+):
+    """
+    Build the agent graph.
+
+    The defaults give the production pipeline. The options exist so the
+    ablation evaluation can switch parts off:
+
+        use_retrieval=False  -> no glossary context reaches the generator
+        use_critic=False     -> no LLM critique; executed SQL is accepted
+        max_retries=0        -> one attempt only
+    """
 
     workflow = StateGraph(
         AgentState
@@ -161,7 +199,7 @@ def build_graph():
 
     workflow.add_node(
         "retrieve_context",
-        retrieve_context
+        retrieve_context if use_retrieval else skip_retrieval
     )
 
     workflow.add_node(
@@ -176,7 +214,7 @@ def build_graph():
 
     workflow.add_node(
         "critique_sql",
-        critique_with_fast_path
+        critique_with_fast_path if use_critic else skip_critic
     )
 
     workflow.add_node(
@@ -241,7 +279,7 @@ def build_graph():
 
     workflow.add_conditional_edges(
         "critique_sql",
-        route_after_critic,
+        lambda state: route_after_critic(state, max_retries),
         {
             "prepare_retry": "prepare_retry",
             "format_answer": "format_answer",

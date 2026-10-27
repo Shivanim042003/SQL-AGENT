@@ -7,6 +7,7 @@ import time
 import httpx
 
 import config
+from app.llm import usage
 from app.llm.client import LLMClient, LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,12 @@ class OpenAICompatibleClient(LLMClient):
         data = response.json()
         content = data["choices"][0]["message"].get("content") or ""
         content = _THINK_BLOCK.sub("", content).strip()
+
+        token_usage = data.get("usage") or {}
+        usage.record(
+            token_usage.get("prompt_tokens"),
+            token_usage.get("completion_tokens"),
+        )
 
         logger.info(
             "llm_call | model=%s | wall=%.2fs | usage=%s",

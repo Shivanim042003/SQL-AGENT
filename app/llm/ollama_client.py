@@ -4,6 +4,7 @@ import time
 from ollama import Client
 
 import config
+from app.llm import usage
 from app.llm.client import LLMClient, LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,10 @@ class OllamaClient(LLMClient):
         )
 
         wall = time.perf_counter() - started
+        usage.record(
+            getattr(response, "prompt_eval_count", None),
+            getattr(response, "eval_count", None),
+        )
         logger.info(
             "llm_call | model=%s | wall=%.2fs | server_total=%.2fs | load=%.2fs | "
             "prefill=%.2fs (%s tok) | decode=%.2fs (%s tok)",

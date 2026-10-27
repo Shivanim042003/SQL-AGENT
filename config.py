@@ -52,6 +52,11 @@ LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "")
 # so the generator's small budget (256) can leave an empty answer.
 LLM_MIN_MAX_TOKENS = int(os.getenv("LLM_MIN_MAX_TOKENS", "0") or 0)
 
+# Evaluation only. DISABLE_SHORTCUTS=1 turns off the hardcoded SQL for known
+# questions and the hardcoded critic acceptance rules, so every answer comes
+# from the model (used by eval/run_ablation.py).
+DISABLE_SHORTCUTS = os.getenv("DISABLE_SHORTCUTS", "0") == "1"
+
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
     "http://127.0.0.1:11434"

@@ -2,6 +2,7 @@ import json
 import re
 from datetime import date
 
+import config
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
@@ -582,6 +583,11 @@ def get_month_range(
 # ============================================================
 
 def deterministic_sql(question: str):
+
+    # Evaluation switch: DISABLE_SHORTCUTS=1 forces every question through
+    # the LLM so results do not depend on hardcoded SQL.
+    if config.DISABLE_SHORTCUTS:
+        return None
 
     normalized = " ".join(
         question.lower().strip().split()

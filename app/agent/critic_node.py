@@ -1,7 +1,7 @@
 import json
 import re
 
-
+import config
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
@@ -611,6 +611,15 @@ def critique_sql(state: AgentState) -> dict:
         sql.lower().strip().rstrip(";").split()
     )
 
+    # Evaluation switch: with DISABLE_SHORTCUTS=1 the hardcoded exact-SQL
+    # acceptance rules below see an empty question and never match, so the
+    # LLM critic judges every query.
+    real_question = question
+
+    if config.DISABLE_SHORTCUTS:
+        question = ""
+        normalized_question = ""
+
     # ========================================================
     # EVENT COUNT
     # ========================================================
@@ -1046,6 +1055,8 @@ def critique_sql(state: AgentState) -> dict:
     # ========================================================
     # LLM CRITIC
     # ========================================================
+
+    question = real_question
 
     try:
 
