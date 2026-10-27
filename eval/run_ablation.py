@@ -228,6 +228,14 @@ def run_question(graph, q, reference_rows, has_critic=True):
     latency = time.perf_counter() - started
     used = usage.delta(usage_before)
 
+    # A model that could not be reached (Ollama stopped, bad key, rate limit)
+    # is a problem with the run, not a wrong answer: mark it as crashed so it
+    # is retried next time instead of being scored as incorrect.
+    if crashed is None and state.get("error_type") == "LLM_ERROR":
+        crashed = "LLM error: " + str(
+            state.get("error") or state.get("final_answer") or "unknown"
+        )
+
     answered = bool(
         crashed is None
         and state.get("sql_valid")

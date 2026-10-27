@@ -380,3 +380,16 @@ def test_critic_verdicts_ignored_when_config_has_no_critic():
     record = ra.run_question(FakeGraph(chunks), q, [[1]], has_critic=False)
     assert "critic_valid" not in record["attempts"][0]
     assert record["final_correct"] is True
+
+
+def test_unreachable_model_is_a_crash_not_a_wrong_answer():
+    q = {"id": "t6", "category": "x", "question": "q"}
+    chunks = [
+        {"check_intent": {
+            "error_type": "LLM_ERROR",
+            "error": "Safety intent check failed: cannot connect",
+        }},
+        {"format_answer": {"final_answer": "I wasn't able"}},
+    ]
+    record = ra.run_question(FakeGraph(chunks), q, [[1]])
+    assert "cannot connect" in record["crashed"]
