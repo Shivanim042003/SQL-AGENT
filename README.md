@@ -186,6 +186,18 @@ What the experiment shows:
 
 Caveats: one run, one local 8B model, 42 questions, and the questions were seen while writing this section, so they are now a development set. Latency in the later part of setup C was inflated by laptop throttling (so compare the medians, not the p95). A hosted model may behave differently.
 
+### Held-out check (30 new questions, same model, run on 2026-10-28)
+
+The 30 questions in `eval/heldout_questions.py` and their reference results were committed before the agent was run on them, and no prompt or code was changed in between.
+
+| Setup | Correct (of 30) | 95% range | Wrong answers returned | No answer |
+|---|---|---|---|---|
+| SQL only | 13 (43%) | 27-61% | 15 | 2 |
+| + Retrieval | 17 (57%) | 39-73% | 11 | 2 |
+| + Critic and retries | 20 (67%) | 49-81% | 6 | 4 |
+
+The ordering matches the 42-question run, but with 30 questions the ranges overlap, so the size of each step is not established. Two results are negative. The critic marked every answer it reviewed as valid, including all 6 wrong answers the full pipeline returned, so it rejected nothing here. Retries ran on 4 questions, each time sent the same SQL again, and fixed none of them. The full pipeline's lead over retrieval alone came from questions where its first attempt happened to differ, not from the critic or retries. These 30 questions are now diagnostic: fixes made after reading these failures must be tested on a new set.
+
 ## Limitations
 
 Please read these before trusting the numbers above.
