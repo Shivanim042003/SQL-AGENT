@@ -216,6 +216,21 @@ What this shows, and what it does not:
 - The hints only cover text columns with 20 or fewer distinct values, so a country stored as `Brasil` is not covered.
 - These 30 questions are now diagnostic. The deployed demo still uses retrieval plus the critic.
 
+### Third held-out set (30 new questions), run after the fixes
+
+`eval/heldout3_questions.py` was frozen in git before the run, and no code or prompt changed between freezing it and running it. Its purpose was to test the lead from the second set: with the value hints on, does adding glossary retrieval lower accuracy?
+
+| Setup | Correct (of 30) | 95% range | Wrong answers returned | No answer |
+|---|---|---|---|---|
+| SQL only | 18 (60%) | 42-75% | 11 | 1 |
+| + Retrieval | 15 (50%) | 33-67% | 12 | 3 |
+| + Critic and retries | 16 (53%) | 36-70% | 14 | 0 |
+
+- The direction repeated: SQL only was ahead of retrieval again. On this set alone it is not established: 6 questions were better without retrieval and 3 were better with it, which could be chance. Pooled with the second set the split is 12 to 3, but that set is where the idea came from, so treat the pooled figure as suggestive.
+- Retries recovered 2 of the 6 retried questions and broke none. Both recoveries began with a database error (a missing column, a query that timed out). The four retries that followed a critic rejection stayed wrong.
+- The critic approved most wrong answers again.
+- The deployed demo has not been changed and still uses retrieval plus the critic.
+
 ## Limitations
 
 Please read these before trusting the numbers above.
