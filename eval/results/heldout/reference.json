@@ -1,0 +1,288 @@
+{
+ "h_join_01": {
+  "sql": "SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id WHERE u.gender = 'F'",
+  "rows": [
+   [
+    62701
+   ]
+  ]
+ },
+ "h_join_02": {
+  "sql": "SELECT p.brand, COUNT(*) FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY p.brand ORDER BY 2 DESC, 1 LIMIT 5",
+  "rows": [
+   [
+    "Allegra K",
+    6292
+   ],
+   [
+    "Calvin Klein",
+    3280
+   ],
+   [
+    "Carhartt",
+    2601
+   ],
+   [
+    "Volcom",
+    1871
+   ],
+   [
+    "Hanes",
+    1858
+   ]
+  ]
+ },
+ "h_join_03": {
+  "sql": "SELECT COUNT(DISTINCT o.user_id) FROM orders o JOIN users u ON u.id = o.user_id WHERE u.state = 'Texas'",
+  "rows": [
+   [
+    1949
+   ]
+  ]
+ },
+ "h_join_04": {
+  "sql": "SELECT AVG(retail_price) FROM products WHERE category = 'Jeans'",
+  "rows": [
+   [
+    97.85320674568013
+   ]
+  ]
+ },
+ "h_join_05": {
+  "sql": "SELECT d.name, COUNT(*) FROM products p JOIN distribution_centers d ON d.id = p.distribution_center_id GROUP BY d.name ORDER BY 2 DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    "Chicago IL",
+    3929
+   ]
+  ]
+ },
+ "h_date_01": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2023-03-01' AND created_at < '2023-04-01'",
+  "rows": [
+   [
+    3744
+   ]
+  ]
+ },
+ "h_date_02": {
+  "sql": "SELECT COUNT(*) FROM users WHERE created_at >= '2021-01-01' AND created_at < '2022-01-01'",
+  "rows": [
+   [
+    19406
+   ]
+  ]
+ },
+ "h_date_03": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE shipped_at >= '2022-01-01' AND shipped_at < '2023-01-01'",
+  "rows": [
+   [
+    18966
+   ]
+  ]
+ },
+ "h_date_04": {
+  "sql": "SELECT EXTRACT(MONTH FROM created_at)::int FROM orders WHERE created_at >= '2022-01-01' AND created_at < '2023-01-01' GROUP BY 1 ORDER BY COUNT(*) DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    12
+   ]
+  ]
+ },
+ "h_date_05": {
+  "sql": "SELECT COUNT(*) FROM events WHERE created_at >= '2023-06-15' AND created_at < '2023-06-16'",
+  "rows": [
+   [
+    2322
+   ]
+  ]
+ },
+ "h_biz_01": {
+  "sql": "SELECT SUM(sale_price) FROM order_items WHERE status = 'Complete'",
+  "rows": [
+   [
+    2715783.743071355
+   ]
+  ]
+ },
+ "h_biz_02": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE status = 'Returned') / COUNT(*) FROM order_items",
+  "rows": [
+   [
+    10.030865046572659
+   ]
+  ]
+ },
+ "h_biz_03": {
+  "sql": "SELECT SUM(sale_price) / COUNT(DISTINCT order_id) FROM order_items WHERE status = 'Complete'",
+  "rows": [
+   [
+    86.61681900463593
+   ]
+  ]
+ },
+ "h_biz_04": {
+  "sql": "SELECT COUNT(DISTINCT session_id) FROM events WHERE event_type = 'purchase'",
+  "rows": [
+   [
+    181759
+   ]
+  ]
+ },
+ "h_biz_05": {
+  "sql": "SELECT 100.0 * SUM(oi.sale_price - p.cost) / SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Complete'",
+  "rows": [
+   [
+    51.9158926799233
+   ]
+  ]
+ },
+ "h_empty_01": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE status = 'Teleported'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "h_empty_02": {
+  "sql": "SELECT id FROM products WHERE brand = 'Zzyzx Fashion'",
+  "rows": []
+ },
+ "h_empty_03": {
+  "sql": "SELECT COUNT(*) FROM users WHERE created_at < '2000-01-01'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "h_empty_04": {
+  "sql": "SELECT COUNT(*) FROM users WHERE age > 120",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "h_empty_05": {
+  "sql": "SELECT COUNT(*) FROM events WHERE event_type = 'teleport'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "h_agg_01": {
+  "sql": "SELECT COUNT(*) FROM (SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3) t",
+  "rows": [
+   [
+    4989
+   ]
+  ]
+ },
+ "h_agg_02": {
+  "sql": "SELECT AVG(num_of_item) FROM orders",
+  "rows": [
+   [
+    1.4514477824094039
+   ]
+  ]
+ },
+ "h_agg_03": {
+  "sql": "SELECT state, COUNT(*) FROM users GROUP BY state ORDER BY 2 DESC, 1 LIMIT 3",
+  "rows": [
+   [
+    "Guangdong",
+    5380
+   ],
+   [
+    "England",
+    4034
+   ],
+   [
+    "California",
+    3704
+   ]
+  ]
+ },
+ "h_agg_04": {
+  "sql": "SELECT MAX(sale_price) FROM order_items",
+  "rows": [
+   [
+    999.0
+   ]
+  ]
+ },
+ "h_agg_05": {
+  "sql": "SELECT department, COUNT(*) FROM products GROUP BY department ORDER BY 1",
+  "rows": [
+   [
+    "Men",
+    13131
+   ],
+   [
+    "Women",
+    15989
+   ]
+  ]
+ },
+ "h_agg_06": {
+  "sql": "SELECT COUNT(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)",
+  "rows": [
+   [
+    19956
+   ]
+  ]
+ },
+ "h_agg_07": {
+  "sql": "SELECT traffic_source, AVG(age) FROM users GROUP BY traffic_source ORDER BY 1",
+  "rows": [
+   [
+    "Display",
+    40.653010858835145
+   ],
+   [
+    "Email",
+    41.12775419446129
+   ],
+   [
+    "Facebook",
+    40.99019944979367
+   ],
+   [
+    "Organic",
+    41.03514228987426
+   ],
+   [
+    "Search",
+    41.08246878344631
+   ]
+  ]
+ },
+ "h_agg_08": {
+  "sql": "SELECT p.category, AVG(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY p.category ORDER BY 2 DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    "Outerwear & Coats",
+    145.13500438791422
+   ]
+  ]
+ },
+ "h_agg_09": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE status = 'Cancelled' AND created_at >= '2023-01-01' AND created_at < '2024-01-01'",
+  "rows": [
+   [
+    8799
+   ]
+  ]
+ },
+ "h_agg_10": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE traffic_source = 'Search') / COUNT(*) FROM users",
+  "rows": [
+   [
+    70.075
+   ]
+  ]
+ }
+}
