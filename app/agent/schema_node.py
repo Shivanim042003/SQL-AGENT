@@ -1,6 +1,8 @@
 from app.agent.state import AgentState
 from app.execution.schema_info import get_schema_summary
 from app.core.timing import measure_latency
+from app.execution.value_hints import get_value_hints
+import config
 
 
 def load_schema(state: AgentState) -> dict:
@@ -22,6 +24,11 @@ def load_schema(state: AgentState) -> dict:
         "schema"
     ):
         schema = get_schema_summary()
+
+        if config.VALUE_HINTS:
+            hints = get_value_hints()
+            if hints:
+                schema = f"{schema}\n\n{hints}"
 
     return {
         "schema": schema,

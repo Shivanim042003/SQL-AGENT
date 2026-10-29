@@ -3,6 +3,7 @@ import re
 from datetime import date
 
 import config
+from app.agent.retry_guard import build_retry_hints, is_repeat
 from app.agent.sql_safety import check_sql_safety
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
@@ -891,6 +892,11 @@ def generate_sql(state: AgentState) -> dict:
 
     retry_section = ""
 
+    retry_hints = ""
+
+    if retry_count > 0 and config.RETRY_GUARD:
+        retry_hints = build_retry_hints(critique, schema)
+
     if retry_count > 0:
 
         retry_section = f"""
@@ -907,6 +913,10 @@ Previous SQL:
 Critic feedback:
 
 {critique}
+
+{retry_hints}
+
+Your new query MUST differ from the previous SQL above.
 
 Fix ONLY the actual identified issue.
 
@@ -1040,6 +1050,72 @@ Return ONLY JSON.
             "latencies": latencies,
             "retry_latencies": retry_latencies,
         }
+
+    # ========================================================
+    # RETRY GUARD: never resend the SQL that just failed
+    # ========================================================
+
+    if (
+        config.RETRY_GUARD
+        and retry_count > 0
+        and is_repeat(sql, previous_sql)
+    ):
+
+        try:
+
+            second = client.complete(
+                SYSTEM_PROMPT,
+                [
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": response_text},
+                    {
+                        "role": "user",
+                        "content": (
+                            "That query is identical to the one that just "
+                            "failed, so it will fail again. Write a "
+                            "different query that fixes the problem. "
+                            + retry_hints
+                            + " Return ONLY JSON."
+                        ),
+                    },
+                ],
+                max_tokens=256,
+                think=False
+            )
+
+            print()
+            print("RAW LLM RESPONSE (retry guard):")
+            print(second.content)
+
+            sql = parse_sql(second.content)
+
+        except Exception as e:
+
+            return {
+                "sql": "",
+                "previous_sql": previous_sql,
+                "error": f"Retry guard failed: {str(e)}",
+                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+                "latencies": latencies,
+                "retry_latencies": retry_latencies,
+            }
+
+        problem = check_sql_safety(sql)
+
+        if problem or is_repeat(sql, previous_sql):
+
+            return {
+                "sql": "",
+                "previous_sql": previous_sql,
+                "error": (
+                    problem
+                    or "The retry produced the same SQL as the failed "
+                       "attempt."
+                ),
+                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
+                "latencies": latencies,
+                "retry_latencies": retry_latencies,
+            }
 
     # ========================================================
     # RESULT

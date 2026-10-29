@@ -66,9 +66,13 @@ CONFIGS = {
 }
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "eval", "results", _SET_DIR)
-RECORDS = os.path.join(OUT_DIR, "records.jsonl")
+# ABLATION_TAG keeps a second run of the same questions (for example after a
+# fix) in its own files, so it does not resume from or overwrite the first.
+_TAG = os.getenv("ABLATION_TAG", "")
+_SUFFIX = f"-{_TAG}" if _TAG else ""
+RECORDS = os.path.join(OUT_DIR, f"records{_SUFFIX}.jsonl")
 REFERENCE = os.path.join(OUT_DIR, "reference.json")
-REPORT = os.path.join(OUT_DIR, "REPORT.md")
+REPORT = os.path.join(OUT_DIR, f"REPORT{_SUFFIX}.md")
 
 ROW_LIMIT = 20  # rows kept per result in the records file
 

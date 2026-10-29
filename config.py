@@ -57,6 +57,11 @@ LLM_MIN_MAX_TOKENS = int(os.getenv("LLM_MIN_MAX_TOKENS", "0") or 0)
 # from the model (used by eval/run_ablation.py).
 DISABLE_SHORTCUTS = os.getenv("DISABLE_SHORTCUTS", "0") == "1"
 
+# Accuracy aids added after the ablation. Both default on; set to 0 to
+# reproduce the earlier behaviour for a before/after comparison.
+VALUE_HINTS = os.getenv("VALUE_HINTS", "1") == "1"
+RETRY_GUARD = os.getenv("RETRY_GUARD", "1") == "1"
+
 OLLAMA_HOST = os.getenv(
     "OLLAMA_HOST",
     "http://127.0.0.1:11434"
