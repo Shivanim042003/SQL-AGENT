@@ -47,7 +47,12 @@ import config  # noqa: E402
 from app.agent.graph import build_graph  # noqa: E402
 from app.llm import usage  # noqa: E402
 from eval.ablation_lib import build_report, results_match  # noqa: E402
-from eval.ablation_questions import QUESTIONS  # noqa: E402
+if os.getenv("ABLATION_SET") == "heldout":
+    from eval.heldout_questions import QUESTIONS  # noqa: E402
+    _SET_DIR = "heldout"
+else:
+    from eval.ablation_questions import QUESTIONS  # noqa: E402
+    _SET_DIR = "ablation"
 
 # name -> (use_retrieval, use_critic, max_retries, description)
 CONFIGS = {
@@ -57,7 +62,7 @@ CONFIGS = {
     "D": (False, True, 2, "critic + retries, no retrieval"),
 }
 
-OUT_DIR = os.path.join(PROJECT_ROOT, "eval", "results", "ablation")
+OUT_DIR = os.path.join(PROJECT_ROOT, "eval", "results", _SET_DIR)
 RECORDS = os.path.join(OUT_DIR, "records.jsonl")
 REFERENCE = os.path.join(OUT_DIR, "reference.json")
 REPORT = os.path.join(OUT_DIR, "REPORT.md")
