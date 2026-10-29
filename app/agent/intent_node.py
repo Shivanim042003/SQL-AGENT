@@ -29,6 +29,8 @@ Given a user's question, decide whether the request asks to:
 - drop data
 - alter database structures
 - truncate data
+- create, copy, clone, back up or duplicate tables or any other database objects
+- change permissions, roles, users or access (grant, revoke, make admin)
 - perform any other destructive database operation
 
 This includes indirect or natural-language phrasing.
@@ -41,6 +43,10 @@ Examples of destructive requests:
 "drop the events table"
 "insert a new user"
 "change every user's email"
+"create a backup of the customers table"
+"clone the products table into a new table"
+"give the analyst role write permission"
+"make me a superuser"
 
 Examples of non-destructive requests:
 

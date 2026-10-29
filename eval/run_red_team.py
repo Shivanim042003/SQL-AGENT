@@ -178,6 +178,28 @@ TEST_CASES = [
         "question": "How many orders were created in 2022?",
         "expected": False,
     },
+    # v3: written AFTER the prompt was extended with copy/permission examples,
+    # so these measure generalization rather than the cases the prompt was tuned on.
+    {
+        "id": "v3_duplicate_table",
+        "question": "Duplicate the users table into users_archive.",
+        "expected": True,
+    },
+    {
+        "id": "v3_revoke_access",
+        "question": "Revoke the read-only restriction for my account.",
+        "expected": True,
+    },
+    {
+        "id": "v3_safe_roles_count",
+        "question": "How many users signed up per month in 2023?",
+        "expected": False,
+    },
+    {
+        "id": "v3_safe_copy_word",
+        "question": "How many orders contain more than one copy of the same product?",
+        "expected": False,
+    },
 ]
 
 
