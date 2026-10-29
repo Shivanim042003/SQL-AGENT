@@ -1,0 +1,116 @@
+"""
+Fresh held-out question set (v3), frozen BEFORE it is run.
+
+Purpose: confirm or reject the v2 lead that, once value hints are on, adding
+glossary retrieval lowers accuracy. Written without running the agent on any
+of these and after fixing the code under test (value hints + retry guard), so
+no code or prompt may change between freezing this set and running it.
+
+    $env:ABLATION_SET = "heldout3"     (results go to eval/results/heldout3)
+"""
+
+QUESTIONS = [
+    # ---- joins ----
+    {"id": "v_join_01", "category": "joins",
+     "question": "How many order items were sold for products in the Women department?",
+     "reference_sql": "SELECT COUNT(*) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.department = 'Women'"},
+    {"id": "v_join_02", "category": "joins",
+     "question": "What is the total sale price of cancelled order items for products in the Jeans category?",
+     "reference_sql": "SELECT SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Cancelled' AND p.category = 'Jeans'"},
+    {"id": "v_join_03", "category": "joins",
+     "question": "How many users from China have placed at least one order?",
+     "reference_sql": "SELECT COUNT(DISTINCT o.user_id) FROM orders o JOIN users u ON u.id = o.user_id WHERE u.country = 'China'"},
+    {"id": "v_join_04", "category": "joins",
+     "question": "Which product category has the most order items?",
+     "reference_sql": "SELECT p.category, COUNT(*) FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY p.category ORDER BY 2 DESC, 1 LIMIT 1",
+     "ordered": True},
+    {"id": "v_join_05", "category": "joins",
+     "question": "How many distinct brands have been bought by female users?",
+     "reference_sql": "SELECT COUNT(DISTINCT p.brand) FROM order_items oi JOIN users u ON u.id = oi.user_id JOIN products p ON p.id = oi.product_id WHERE u.gender = 'F'"},
+
+    # ---- date handling ----
+    {"id": "v_date_01", "category": "dates",
+     "question": "How many users joined in the second half of 2022?",
+     "reference_sql": "SELECT COUNT(*) FROM users WHERE created_at >= '2022-07-01' AND created_at < '2023-01-01'"},
+    {"id": "v_date_02", "category": "dates",
+     "question": "How many events happened between January 1 and January 7, 2023, including both days?",
+     "reference_sql": "SELECT COUNT(*) FROM events WHERE created_at >= '2023-01-01' AND created_at < '2023-01-08'"},
+    {"id": "v_date_03", "category": "dates",
+     "question": "How many orders were shipped in November 2022?",
+     "reference_sql": "SELECT COUNT(*) FROM orders WHERE shipped_at >= '2022-11-01' AND shipped_at < '2022-12-01'"},
+    {"id": "v_date_04", "category": "dates",
+     "question": "How many order items were created in 2021?",
+     "reference_sql": "SELECT COUNT(*) FROM order_items WHERE created_at >= '2021-01-01' AND created_at < '2022-01-01'"},
+    {"id": "v_date_05", "category": "dates",
+     "question": "How many orders were created on or before 2021-12-31?",
+     "reference_sql": "SELECT COUNT(*) FROM orders WHERE created_at < '2022-01-01'"},
+
+    # ---- business definitions ----
+    {"id": "v_biz_01", "category": "business",
+     "question": "What is the average sale price of completed order items?",
+     "reference_sql": "SELECT AVG(sale_price) FROM order_items WHERE status = 'Complete'"},
+    {"id": "v_biz_02", "category": "business",
+     "question": "What percentage of order items have the status Complete?",
+     "reference_sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE status = 'Complete') / COUNT(*) FROM order_items"},
+    {"id": "v_biz_03", "category": "business",
+     "question": "What is the total revenue from completed order items for products in the Jeans category?",
+     "reference_sql": "SELECT SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Complete' AND p.category = 'Jeans'"},
+    {"id": "v_biz_04", "category": "business",
+     "question": "How many distinct users have added a product to their cart?",
+     "reference_sql": "SELECT COUNT(DISTINCT user_id) FROM events WHERE event_type = 'cart'"},
+    {"id": "v_biz_05", "category": "business",
+     "question": "What is the average number of events per session?",
+     "reference_sql": "SELECT COUNT(*)::float / COUNT(DISTINCT session_id) FROM events"},
+
+    # ---- empty or tricky results ----
+    {"id": "v_empty_01", "category": "empty",
+     "question": "How many users have the traffic source Pinterest?",
+     "reference_sql": "SELECT COUNT(*) FROM users WHERE traffic_source = 'Pinterest'", "expect_empty": True},
+    {"id": "v_empty_02", "category": "empty",
+     "question": "List the order items with a sale price above 5000.",
+     "reference_sql": "SELECT id FROM order_items WHERE sale_price > 5000", "expect_empty": True},
+    {"id": "v_empty_03", "category": "empty",
+     "question": "How many products belong to the Kids department?",
+     "reference_sql": "SELECT COUNT(*) FROM products WHERE department = 'Kids'", "expect_empty": True},
+    {"id": "v_empty_04", "category": "empty",
+     "question": "How many orders were created before 2015?",
+     "reference_sql": "SELECT COUNT(*) FROM orders WHERE created_at < '2015-01-01'", "expect_empty": True},
+    {"id": "v_empty_05", "category": "empty",
+     "question": "How many events used the browser Opera?",
+     "reference_sql": "SELECT COUNT(*) FROM events WHERE browser = 'Opera'", "expect_empty": True},
+
+    # ---- harder aggregations ----
+    {"id": "v_agg_01", "category": "aggregation",
+     "question": "What is the highest number of items in a single order?",
+     "reference_sql": "SELECT MAX(num_of_item) FROM orders"},
+    {"id": "v_agg_02", "category": "aggregation",
+     "question": "Which traffic source has the most users?",
+     "reference_sql": "SELECT traffic_source, COUNT(*) FROM users GROUP BY traffic_source ORDER BY 2 DESC, 1 LIMIT 1",
+     "ordered": True},
+    {"id": "v_agg_03", "category": "aggregation",
+     "question": "What is the average age of female users?",
+     "reference_sql": "SELECT AVG(age) FROM users WHERE gender = 'F'"},
+    {"id": "v_agg_04", "category": "aggregation",
+     "question": "How many distinct users have had more than one session?",
+     "reference_sql": "SELECT COUNT(*) FROM (SELECT user_id FROM events WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(DISTINCT session_id) > 1) t"},
+    {"id": "v_agg_05", "category": "aggregation",
+     "question": "How many products are there in each category?",
+     "reference_sql": "SELECT category, COUNT(*) FROM products GROUP BY category ORDER BY 1"},
+    {"id": "v_agg_06", "category": "aggregation",
+     "question": "Which 5 states have the most orders?",
+     "reference_sql": "SELECT u.state, COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id GROUP BY u.state ORDER BY 2 DESC, 1 LIMIT 5",
+     "ordered": True},
+    {"id": "v_agg_07", "category": "aggregation",
+     "question": "What is the average retail price of products in the Women department?",
+     "reference_sql": "SELECT AVG(retail_price) FROM products WHERE department = 'Women'"},
+    {"id": "v_agg_08", "category": "aggregation",
+     "question": "How many users have placed more than one order?",
+     "reference_sql": "SELECT COUNT(*) FROM (SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 1) t"},
+    {"id": "v_agg_09", "category": "aggregation",
+     "question": "What is the most common browser in the events data?",
+     "reference_sql": "SELECT browser, COUNT(*) FROM events GROUP BY browser ORDER BY 2 DESC, 1 LIMIT 1",
+     "ordered": True},
+    {"id": "v_agg_10", "category": "aggregation",
+     "question": "What is the total sale price of all order items with the status Returned?",
+     "reference_sql": "SELECT SUM(sale_price) FROM order_items WHERE status = 'Returned'"},
+]

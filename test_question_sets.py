@@ -2,6 +2,7 @@
 from eval.ablation_questions import QUESTIONS as DEV
 from eval.heldout_questions import QUESTIONS as H1
 from eval.heldout2_questions import QUESTIONS as H2
+from eval.heldout3_questions import QUESTIONS as H3
 
 
 def _norm(text):
@@ -9,7 +10,7 @@ def _norm(text):
 
 
 def test_ids_unique_across_sets():
-    ids = [q["id"] for q in DEV + H1 + H2]
+    ids = [q["id"] for q in DEV + H1 + H2 + H3]
     assert len(ids) == len(set(ids))
 
 
@@ -35,3 +36,10 @@ def test_v2_shares_no_question_with_any_other_set():
 def test_every_question_has_reference_sql():
     for q in H1 + H2:
         assert q["reference_sql"].strip().lower().startswith("select")
+
+
+def test_v3_shares_no_question_with_any_other_set():
+    h3 = {_norm(q["question"]) for q in H3}
+    others = {_norm(q["question"]) for q in DEV + H1 + H2}
+    assert not (h3 & others)
+    assert len(H3) == 30

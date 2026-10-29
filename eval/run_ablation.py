@@ -50,6 +50,9 @@ from eval.ablation_lib import build_report, results_match  # noqa: E402
 if os.getenv("ABLATION_SET") == "heldout":
     from eval.heldout_questions import QUESTIONS  # noqa: E402
     _SET_DIR = "heldout"
+elif os.getenv("ABLATION_SET") == "heldout3":
+    from eval.heldout3_questions import QUESTIONS  # noqa: E402
+    _SET_DIR = "heldout3"
 elif os.getenv("ABLATION_SET") == "heldout2":
     from eval.heldout2_questions import QUESTIONS  # noqa: E402
     _SET_DIR = "heldout2"
