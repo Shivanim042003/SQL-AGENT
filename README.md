@@ -165,6 +165,26 @@ python eval/run_ablation.py --report-only          # rebuild the report
 
 Runs resume (`records.jsonl`), and a question that crashed, for example on a rate limit, is retried on the next run. Use `--pause 3` (or `EVAL_PAUSE_SECONDS`) to stay under provider limits. Free hosted tiers have daily token caps, so run it against local Ollama, or split it with `--categories`. Results are only meaningful if you publish the numbers you actually get, including a config where retries do not help.
 
+### Results (local `qwen3:8b`, 42 questions, one run on 2026-10-28)
+
+| Setup | Correct (of 42) | Wrong answers returned | No answer | Median time | Tokens / question |
+|---|---|---|---|---|---|
+| A. SQL generation only | 19 (45%) | 22 | 1 | 51 s | 1,900 |
+| B. + glossary retrieval | 20 (48%) | 18 | 4 | 71 s | 2,200 |
+| C. + critic and up to 2 retries | 24 (57%) | 15 | 3 | 85 s | 4,900 |
+
+95% intervals for the final accuracy are roughly 31-60%, 33-62% and 42-71%, so they overlap: the gain from C is suggestive, not proven. Full report and every trace: `eval/results/ablation/REPORT.md` (question-set fingerprint `2bf45cd73ab2`).
+
+What the experiment shows:
+
+- **Retries helped a little and never hurt.** 12 questions were retried; 4 were fixed (`biz_06`, `empty_04`, `empty_05`, `agg_06`) and none went from right to wrong. The price was about 2.5x the tokens and roughly 35 s more per question.
+- **The critic is cautious but blind to meaning.** Judged against the reference queries it made no false alarms (0 correct answers rejected) and all 9 rejections were right, but it accepted 15 wrong answers out of 39 it approved. Every wrong answer returned by setup C was one the critic had approved. A small model can catch a missing JOIN or a nonexistent column; it cannot check, for example, that `<= '2022-01-31'` drops most of the last day, or that a one-day question was answered with a one-month range (`date_03`).
+- **Retrieval is not a clear win.** It helped the business-definition questions (3 to 5 of 10) but made the model add `status = 'Complete'` to questions that never asked for it (`join_04`, `join_06`, `join_07`, `join_08`, `date_04`, `date_09`).
+- **Joins are the weak spot**: 1 of 8 in the full pipeline. The glossary explains definitions, not how tables connect; the model reached for denormalised columns on `inventory_items` or used `events` as a stand-in for orders.
+- **Retries can repeat themselves.** In `join_03` the same SQL (a column that does not exist) was regenerated three times despite the database error being fed back.
+
+Caveats: one run, one local 8B model, 42 questions, and the questions were seen while writing this section, so they are now a development set. Latency in the later part of setup C was inflated by laptop throttling (so compare the medians, not the p95). A hosted model may behave differently.
+
 ## Limitations
 
 Please read these before trusting the numbers above.
