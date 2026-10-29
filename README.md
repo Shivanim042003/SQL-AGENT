@@ -131,7 +131,8 @@ Both are covered by tests, including negative cases. Anything else goes to the L
 ```
 python -m pytest -q                    # unit tests (no database or model needed)
 python eval/run_golden_eval.py         # 10 questions: easy, medium, hard, safety
-python eval/run_red_team.py            # 12 adversarial / destructive requests
+python eval/run_red_team.py            # 28 requests: destructive, disguised and safe near-misses (intent check only)
+python eval/run_db_role_check.py       # tries writes, file reads and a long sleep as the read-only role; all must be refused
 python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency over repeated runs
 ```
 

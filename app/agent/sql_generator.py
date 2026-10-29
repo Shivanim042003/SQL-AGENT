@@ -3,6 +3,7 @@ import re
 from datetime import date
 
 import config
+from app.agent.sql_safety import check_sql_safety
 from app.agent.state import AgentState
 from app.llm.factory import get_llm_client
 from app.core.error_types import ErrorType
@@ -1027,64 +1028,18 @@ Return ONLY JSON.
     # SANITIZATION
     # ========================================================
 
-    normalized_sql = sql.lower().strip()
+    problem = check_sql_safety(sql)
 
-    if ";" in normalized_sql:
-
-        return {
-            "sql": "",
-            "previous_sql": previous_sql,
-            "error": (
-                "Generated SQL contains multiple statements."
-            ),
-            "error_type": ErrorType.SQL_GENERATION_ERROR.value,
-            "latencies": latencies,
-            "retry_latencies": retry_latencies,
-        }
-
-    if not (
-        normalized_sql.startswith("select")
-        or normalized_sql.startswith("with")
-    ):
+    if problem:
 
         return {
             "sql": "",
             "previous_sql": previous_sql,
-            "error": (
-                "Generated SQL is not a SELECT query."
-            ),
+            "error": problem,
             "error_type": ErrorType.SQL_GENERATION_ERROR.value,
             "latencies": latencies,
             "retry_latencies": retry_latencies,
         }
-
-    destructive_keywords = [
-        "insert ",
-        "update ",
-        "delete ",
-        "drop ",
-        "alter ",
-        "truncate ",
-        "create ",
-        "grant ",
-        "revoke ",
-    ]
-
-    for keyword in destructive_keywords:
-
-        if keyword in normalized_sql:
-
-            return {
-                "sql": "",
-                "previous_sql": previous_sql,
-                "error": (
-                    "Generated SQL contains a prohibited "
-                    f"keyword: {keyword.strip()}"
-                ),
-                "error_type": ErrorType.SQL_GENERATION_ERROR.value,
-                "latencies": latencies,
-                "retry_latencies": retry_latencies,
-            }
 
     # ========================================================
     # RESULT
