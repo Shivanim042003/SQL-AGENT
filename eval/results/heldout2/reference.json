@@ -1,0 +1,266 @@
+{
+ "g_join_01": {
+  "sql": "SELECT COUNT(*) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.category = 'Accessories'",
+  "rows": [
+   [
+    9753
+   ]
+  ]
+ },
+ "g_join_02": {
+  "sql": "SELECT SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.brand = 'Allegra K'",
+  "rows": [
+   [
+    90115.1000084877
+   ]
+  ]
+ },
+ "g_join_03": {
+  "sql": "SELECT COUNT(DISTINCT oi.product_id) FROM order_items oi JOIN users u ON u.id = oi.user_id WHERE u.country = 'Brasil'",
+  "rows": [
+   [
+    17313
+   ]
+  ]
+ },
+ "g_join_04": {
+  "sql": "SELECT AVG(oi.sale_price) FROM order_items oi JOIN users u ON u.id = oi.user_id WHERE u.gender = 'M'",
+  "rows": [
+   [
+    63.20037702445353
+   ]
+  ]
+ },
+ "g_join_05": {
+  "sql": "SELECT d.name, SUM(p.retail_price) FROM products p JOIN distribution_centers d ON d.id = p.distribution_center_id GROUP BY d.name ORDER BY 2 DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    "Houston TX",
+    255746.1000008583
+   ]
+  ]
+ },
+ "g_date_01": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE delivered_at >= '2023-01-01' AND delivered_at < '2023-04-01'",
+  "rows": [
+   [
+    3607
+   ]
+  ]
+ },
+ "g_date_02": {
+  "sql": "SELECT COUNT(*) FROM events WHERE created_at >= '2022-12-01' AND created_at < '2023-01-01'",
+  "rows": [
+   [
+    50792
+   ]
+  ]
+ },
+ "g_date_03": {
+  "sql": "SELECT COUNT(*) FROM order_items WHERE returned_at >= '2023-01-01' AND returned_at < '2024-01-01'",
+  "rows": [
+   [
+    7144
+   ]
+  ]
+ },
+ "g_date_04": {
+  "sql": "SELECT COUNT(*) FROM users WHERE created_at >= '2023-07-01'",
+  "rows": [
+   [
+    10562
+   ]
+  ]
+ },
+ "g_date_05": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2022-06-01' AND created_at < '2022-07-01'",
+  "rows": [
+   [
+    2299
+   ]
+  ]
+ },
+ "g_biz_01": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE status = 'Returned') / COUNT(*) FROM orders",
+  "rows": [
+   [
+    10.00590931595675
+   ]
+  ]
+ },
+ "g_biz_02": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE status = 'Cancelled') / COUNT(*) FROM orders",
+  "rows": [
+   [
+    14.860332518805999
+   ]
+  ]
+ },
+ "g_biz_03": {
+  "sql": "SELECT COUNT(DISTINCT user_id) FROM events WHERE event_type = 'purchase'",
+  "rows": [
+   [
+    80044
+   ]
+  ]
+ },
+ "g_biz_04": {
+  "sql": "SELECT SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Complete' AND p.department = 'Men'",
+  "rows": [
+   [
+    1449385.9812016487
+   ]
+  ]
+ },
+ "g_biz_05": {
+  "sql": "SELECT AVG(oi.sale_price - p.cost) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Complete'",
+  "rows": [
+   [
+    30.91327092178574
+   ]
+  ]
+ },
+ "g_empty_01": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE num_of_item > 10",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "g_empty_02": {
+  "sql": "SELECT COUNT(*) FROM users WHERE country = 'Atlantis'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "g_empty_03": {
+  "sql": "SELECT id FROM products WHERE retail_price > 5000",
+  "rows": []
+ },
+ "g_empty_04": {
+  "sql": "SELECT COUNT(*) FROM events WHERE browser = 'Netscape'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "g_empty_05": {
+  "sql": "SELECT COUNT(*) FROM order_items WHERE sale_price < 0",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "g_agg_01": {
+  "sql": "SELECT country, COUNT(*) FROM users GROUP BY country ORDER BY 2 DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    "China",
+    34150
+   ]
+  ]
+ },
+ "g_agg_02": {
+  "sql": "SELECT AVG(o.num_of_item) FROM orders o JOIN users u ON u.id = o.user_id WHERE u.age < 25",
+  "rows": [
+   [
+    1.44689735303729
+   ]
+  ]
+ },
+ "g_agg_03": {
+  "sql": "SELECT status, COUNT(*) FROM order_items GROUP BY status ORDER BY 1",
+  "rows": [
+   [
+    "Cancelled",
+    27090
+   ],
+   [
+    "Complete",
+    45609
+   ],
+   [
+    "Processing",
+    36388
+   ],
+   [
+    "Returned",
+    18232
+   ],
+   [
+    "Shipped",
+    54440
+   ]
+  ]
+ },
+ "g_agg_04": {
+  "sql": "SELECT event_type, COUNT(*) FROM events GROUP BY event_type ORDER BY 2 DESC, 1 LIMIT 3",
+  "rows": [
+   [
+    "product",
+    845607
+   ],
+   [
+    "cart",
+    595994
+   ],
+   [
+    "department",
+    595323
+   ]
+  ]
+ },
+ "g_agg_05": {
+  "sql": "SELECT MIN(age) FROM users WHERE gender = 'F'",
+  "rows": [
+   [
+    12
+   ]
+  ]
+ },
+ "g_agg_06": {
+  "sql": "SELECT COUNT(*) FROM (SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) = 1) t",
+  "rows": [
+   [
+    49832
+   ]
+  ]
+ },
+ "g_agg_07": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE browser = 'Chrome') / COUNT(*) FROM events",
+  "rows": [
+   [
+    50.111247580658095
+   ]
+  ]
+ },
+ "g_agg_08": {
+  "sql": "SELECT EXTRACT(MONTH FROM created_at)::int FROM order_items WHERE created_at >= '2023-01-01' AND created_at < '2024-01-01' GROUP BY 1 ORDER BY SUM(sale_price) DESC, 1 LIMIT 1",
+  "rows": [
+   [
+    12
+   ]
+  ]
+ },
+ "g_agg_09": {
+  "sql": "SELECT COUNT(DISTINCT e.session_id) FROM events e JOIN users u ON u.id = e.user_id WHERE u.country = 'Germany'",
+  "rows": [
+   [
+    7724
+   ]
+  ]
+ },
+ "g_agg_10": {
+  "sql": "SELECT COUNT(*) FROM products WHERE retail_price > 100",
+  "rows": [
+   [
+    4002
+   ]
+  ]
+ }
+}
