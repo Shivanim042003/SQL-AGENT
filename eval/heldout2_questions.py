@@ -21,7 +21,7 @@ QUESTIONS = [
      "reference_sql": "SELECT SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.brand = 'Allegra K'"},
     {"id": "g_join_03", "category": "joins",
      "question": "How many distinct products have been ordered by users from Brazil?",
-     "reference_sql": "SELECT COUNT(DISTINCT oi.product_id) FROM order_items oi JOIN users u ON u.id = oi.user_id WHERE u.country = 'Brazil'"},
+     "reference_sql": "SELECT COUNT(DISTINCT oi.product_id) FROM order_items oi JOIN users u ON u.id = oi.user_id WHERE u.country = 'Brasil'"},  # stored spelling is 'Brasil'; the question says Brazil on purpose
     {"id": "g_join_04", "category": "joins",
      "question": "What is the average sale price of order items bought by male users?",
      "reference_sql": "SELECT AVG(oi.sale_price) FROM order_items oi JOIN users u ON u.id = oi.user_id WHERE u.gender = 'M'"},
