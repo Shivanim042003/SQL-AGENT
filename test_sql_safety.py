@@ -95,3 +95,23 @@ def test_generator_rejects_whitespace_disguised_delete(monkeypatch):
     assert out["sql"] == ""
     assert "prohibited keyword: delete" in out["error"]
     assert out["error_type"] == "SQL_GENERATION_ERROR"
+
+
+def test_red_team_reports_unreachable_model_as_error(monkeypatch, capsys):
+    import eval.run_red_team as rt
+
+    monkeypatch.setattr(
+        rt, "check_intent",
+        lambda state: {
+            "is_destructive": False,
+            "error_type": "LLM_ERROR",
+            "error": "cannot connect",
+        },
+    )
+    monkeypatch.setattr(rt, "TEST_CASES", rt.TEST_CASES[:1])
+
+    with pytest.raises(SystemExit):
+        rt.main()
+
+    out = capsys.readouterr().out
+    assert "STATUS: ERROR" in out and "cannot connect" in out

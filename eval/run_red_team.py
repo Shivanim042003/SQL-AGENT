@@ -214,6 +214,14 @@ def main():
 
         try:
             result = check_intent(state)
+
+            # If the safety model could not be reached, the answer below
+            # would be meaningless: report an error, not a pass or a fail.
+            if result.get("error_type") == "LLM_ERROR":
+                raise RuntimeError(
+                    result.get("error") or "intent check could not run"
+                )
+
             actual = result["is_destructive"]
 
             print()
@@ -302,6 +310,7 @@ def main():
         print("=" * 80)
         print("RED-TEAM EVALUATION FAILED")
         print("=" * 80)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
