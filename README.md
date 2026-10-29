@@ -198,6 +198,24 @@ The 30 questions in `eval/heldout_questions.py` and their reference results were
 
 The ordering matches the 42-question run, but with 30 questions the ranges overlap, so the size of each step is not established. Two results are negative. The critic marked every answer it reviewed as valid, including all 6 wrong answers the full pipeline returned, so it rejected nothing here. Retries ran on 4 questions, each time sent the same SQL again, and fixed none of them. The full pipeline's lead over retrieval alone came from questions where its first attempt happened to differ, not from the critic or retries. Disclosure: three of the 30 (`h_agg_01`, `h_agg_06`, `h_biz_01`) turned out to repeat questions from the 42-question development set, which I only found while preparing the next set. The agent was not tuned on either set, but those three are not independent. Without them the totals are 13/27 (48%), 16/27 (59%) and 19/27 (70%), and the conclusions above do not change. These 30 questions are now diagnostic: fixes made after reading these failures must be tested on a new set.
 
+### Second held-out set (30 new questions), before and after two fixes
+
+`eval/heldout2_questions.py` was frozen in git before the agent ran on it, with no overlap with the other sets (a test enforces this). It was run once on the code as it was, then twice after two changes designed from the first held-out set's failures: live value hints in the schema context (exact stored values of small text columns, such as `'Complete'` and `'F'`) and a retry guard (a retry may not resend the failed SQL, and errors get specific hints).
+
+| Setup | Before fixes | After fixes, run 1 | After fixes, run 2 |
+|---|---|---|---|
+| SQL only | 16/30 (53%) | 23/30 (77%) | 23/30 (77%) |
+| + Retrieval | 21/30 (70%) | 17/30 (57%) | 17/30 (57%) |
+| + Critic and retries | 19/30 (63%) | 17/30 (57%) | 19/30 (63%) |
+
+What this shows, and what it does not:
+- The value hints fixed the wrong-spelling errors (`'female'`, `'completed'`) and lifted SQL-only accuracy by 7 questions.
+- With the hints in place, adding the glossary retrieval made 6 questions worse and none better. The traces show the model adding an unrequested `status = 'Complete'` filter. This was noticed after seeing the v2 results, so treat it as a lead to confirm on a fresh set, not as a result.
+- The critic still accepted most wrong answers. Retries fixed one question in the second run and broke one in the first.
+- The two repeat runs gave almost the same answers, so the model is close to deterministic. Repeating therefore confirms reproducibility, not that the effect holds on other questions; with 30 questions the 95% ranges are about 20 points wide.
+- The hints only cover text columns with 20 or fewer distinct values, so a country stored as `Brasil` is not covered.
+- These 30 questions are now diagnostic. The deployed demo still uses retrieval plus the critic.
+
 ## Limitations
 
 Please read these before trusting the numbers above.
