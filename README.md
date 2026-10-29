@@ -131,14 +131,14 @@ Both are covered by tests, including negative cases. Anything else goes to the L
 ```
 python -m pytest -q                    # unit tests (no database or model needed)
 python eval/run_golden_eval.py         # 10 questions: easy, medium, hard, safety
-python eval/run_red_team.py            # 28 requests: destructive, disguised and safe near-misses (intent check only)
+python eval/run_red_team.py            # 32 requests: destructive, disguised and safe near-misses (intent check only)
 python eval/run_db_role_check.py       # tries writes, file reads and a long sleep as the read-only role; all must be refused
 python eval/run_repeated_eval.py --trials 5   # pass rate and p50/p90 latency over repeated runs
 ```
 
 The unit tests need no database or Ollama: `conftest.py` loads `.env` if present and otherwise supplies placeholder `DATABASE_URL` and `READONLY_DATABASE_URL` values.
 
-The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the red-team set. Typical latency: plain COUNT(*) questions that take the shortcut about 3-8 s; other questions about 11-23 s, mostly spent processing the 1.5-2k-token generator and critic prompts on the iGPU. Questions that need a retry take 25-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
+The golden eval checks answers against ground truth computed from the database. On the author's machine (Intel Arc iGPU, Vulkan, qwen3:8b) the current `main` scores 10/10 on the golden eval and 12/12 on the original red-team set. The red-team set has since grown to 32 requests (intent check only); the extended safety prompt passes all 32. A first run of the 28-case version missed 2 (a table-copy request and a grant-admin request); the prompt was then extended, and the 4 `v3_` cases written afterwards (2 destructive, 2 safe near-misses) all passed. Those 4 are the only unseen cases, so treat 32/32 as a development score. The SQL filter and the read-only database role would still have stopped both misses. Typical latency: plain COUNT(*) questions that take the shortcut about 3-8 s; other questions about 11-23 s, mostly spent processing the 1.5-2k-token generator and critic prompts on the iGPU. Questions that need a retry take 25-30 s. A retry costs roughly 10-20 s more. A repeated run (5 trials of all 10 questions, `eval/run_repeated_eval.py`) passed 50/50 with answered-question latency p50 13.2 s and p90 23.2 s; one question (`medium_03`) needed a retry in 3 of 5 trials.
 
 ## Ablation: do glossary retrieval and the critic help?
 
@@ -190,7 +190,7 @@ Caveats: one run, one local 8B model, 42 questions, and the questions were seen 
 
 Please read these before trusting the numbers above.
 
-- **Small, partly tuned evaluation.** The golden set has 10 questions and the red-team set has 12. Some prompt sections and shortcuts were written while debugging these same questions, so the scores overstate general accuracy.
+- **Small, partly tuned evaluation.** The golden set has 10 questions and the red-team set has 32 (12 original, 16 added in v2, 4 in v3). Some prompt sections and shortcuts were written while debugging these same questions, so the scores overstate general accuracy.
 - **Hardcoded shortcuts.** `deterministic_sql` shortcuts and exact-SQL acceptance rules in `critic_node.py` (for a plain distinct-session count and the conversion-rate query) would accept those exact queries without asking the model. In the recorded runs they did not trigger, because the generator's SQL carries column aliases and so does not match, and the LLM critic judged those questions. The two opt-in critic shortcuts above are narrower and tested, but they are still special cases.
 - **An 8B critic is unreliable.** It sometimes rejects correct SQL (for example, `COUNT(DISTINCT session_id) ... WHERE event_type = 'purchase'` for "sessions that contain a purchase event"). Prompt wording did not fix this; the code shortcut does for that shape only.
 - **Generator first attempts vary.** For some questions the first SQL is wrong and is fixed on retry, which is the main source of slow answers.
