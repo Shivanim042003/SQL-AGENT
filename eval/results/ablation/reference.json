@@ -1,0 +1,405 @@
+{
+ "join_01": {
+  "sql": "SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id WHERE u.state = 'California'",
+  "rows": [
+   [
+    4619
+   ]
+  ]
+ },
+ "join_02": {
+  "sql": "SELECT p.category, SUM(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY p.category ORDER BY 2 DESC LIMIT 5",
+  "rows": [
+   [
+    "Outerwear & Coats",
+    1301570.7193508148
+   ],
+   [
+    "Jeans",
+    1253644.2118606567
+   ],
+   [
+    "Sweaters",
+    842651.470293045
+   ],
+   [
+    "Suits & Sport Coats",
+    666767.309252739
+   ],
+   [
+    "Fashion Hoodies & Sweatshirts",
+    649352.8204889297
+   ]
+  ]
+ },
+ "join_03": {
+  "sql": "SELECT COUNT(DISTINCT oi.user_id) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.brand = 'Calvin Klein'",
+  "rows": [
+   [
+    3199
+   ]
+  ]
+ },
+ "join_04": {
+  "sql": "SELECT AVG(age) FROM users WHERE id IN (SELECT DISTINCT user_id FROM orders)",
+  "rows": [
+   [
+    41.026472939883064
+   ]
+  ]
+ },
+ "join_05": {
+  "sql": "SELECT COUNT(*) FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN distribution_centers d ON d.id = p.distribution_center_id WHERE d.name = 'Memphis TN'",
+  "rows": [
+   [
+    24139
+   ]
+  ]
+ },
+ "join_06": {
+  "sql": "SELECT u.traffic_source, COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id GROUP BY u.traffic_source ORDER BY 2 DESC LIMIT 3",
+  "rows": [
+   [
+    "Search",
+    87768
+   ],
+   [
+    "Organic",
+    18963
+   ],
+   [
+    "Facebook",
+    7242
+   ]
+  ]
+ },
+ "join_07": {
+  "sql": "SELECT COUNT(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)",
+  "rows": [
+   [
+    19956
+   ]
+  ]
+ },
+ "join_08": {
+  "sql": "SELECT AVG(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.department = 'Women'",
+  "rows": [
+   [
+    55.9470458611899
+   ]
+  ]
+ },
+ "date_01": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2022-01-01' AND created_at < '2023-01-01'",
+  "rows": [
+   [
+    29171
+   ]
+  ]
+ },
+ "date_02": {
+  "sql": "SELECT COUNT(*) FROM users WHERE created_at >= '2021-01-01' AND created_at < '2021-04-01'",
+  "rows": [
+   [
+    4775
+   ]
+  ]
+ },
+ "date_03": {
+  "sql": "SELECT COUNT(*) FROM events WHERE created_at >= '2023-03-15' AND created_at < '2023-03-16'",
+  "rows": [
+   [
+    1787
+   ]
+  ]
+ },
+ "date_04": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2020-02-01' AND created_at < '2020-03-01'",
+  "rows": [
+   [
+    492
+   ]
+  ]
+ },
+ "date_05": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2022-01-01' AND created_at < '2022-02-01'",
+  "rows": [
+   [
+    1884
+   ]
+  ]
+ },
+ "date_06": {
+  "sql": "SELECT COUNT(*) FROM order_items WHERE delivered_at >= '2022-07-01' AND delivered_at < '2023-01-01'",
+  "rows": [
+   [
+    8407
+   ]
+  ]
+ },
+ "date_07": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE shipped_at >= '2021-12-01' AND shipped_at < '2022-01-01'",
+  "rows": [
+   [
+    1209
+   ]
+  ]
+ },
+ "date_08": {
+  "sql": "SELECT COUNT(*) FROM orders WHERE delivered_at - created_at > INTERVAL '5 days'",
+  "rows": [
+   [
+    12826
+   ]
+  ]
+ },
+ "date_09": {
+  "sql": "SELECT EXTRACT(YEAR FROM created_at), COUNT(*) FROM orders GROUP BY 1",
+  "rows": [
+   [
+    null,
+    3063
+   ],
+   [
+    2024.0,
+    6067
+   ],
+   [
+    2020.0,
+    8642
+   ],
+   [
+    2023.0,
+    59041
+   ],
+   [
+    2019.0,
+    2538
+   ],
+   [
+    2022.0,
+    29171
+   ],
+   [
+    2021.0,
+    16704
+   ]
+  ]
+ },
+ "biz_01": {
+  "sql": "SELECT SUM(sale_price) / COUNT(DISTINCT order_id) FROM order_items WHERE status = 'Complete'",
+  "rows": [
+   [
+    86.61681900463593
+   ]
+  ]
+ },
+ "biz_02": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE completed > 1) / COUNT(*) FROM (SELECT user_id, COUNT(*) FILTER (WHERE status = 'Complete') AS completed FROM orders GROUP BY user_id) t",
+  "rows": [
+   [
+    4.133976313027834
+   ]
+  ]
+ },
+ "biz_03": {
+  "sql": "WITH s AS (SELECT session_id, BOOL_OR(event_type = 'cart') AS carted, BOOL_OR(event_type = 'purchase') AS bought FROM events GROUP BY session_id) SELECT 100.0 * COUNT(*) FILTER (WHERE carted AND NOT bought) / NULLIF(COUNT(*) FILTER (WHERE carted), 0) FROM s",
+  "rows": [
+   [
+    57.940372003906084
+   ]
+  ]
+ },
+ "biz_04": {
+  "sql": "SELECT 100.0 * COUNT(DISTINCT session_id) FILTER (WHERE event_type = 'cart') / COUNT(DISTINCT session_id) FROM events",
+  "rows": [
+   [
+    63.3869153175829
+   ]
+  ]
+ },
+ "biz_05": {
+  "sql": "SELECT SUM(sale_price) FROM order_items WHERE status = 'Complete'",
+  "rows": [
+   [
+    2715783.743071355
+   ]
+  ]
+ },
+ "biz_06": {
+  "sql": "SELECT SUM(oi.sale_price - p.cost) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.status = 'Complete'",
+  "rows": [
+   [
+    1409923.3734717271
+   ]
+  ]
+ },
+ "biz_07": {
+  "sql": "SELECT COUNT(*) FROM order_items WHERE status = 'Returned'",
+  "rows": [
+   [
+    18232
+   ]
+  ]
+ },
+ "biz_08": {
+  "sql": "SELECT 100.0 * COUNT(*) FILTER (WHERE status = 'Cancelled') / COUNT(*) FROM orders",
+  "rows": [
+   [
+    14.860332518805999
+   ]
+  ]
+ },
+ "biz_09": {
+  "sql": "SELECT COUNT(*) FROM events WHERE user_id IS NULL",
+  "rows": [
+   [
+    1125671
+   ]
+  ]
+ },
+ "biz_10": {
+  "sql": "SELECT traffic_source, 100.0 * COUNT(DISTINCT session_id) FILTER (WHERE event_type = 'purchase') / COUNT(DISTINCT session_id) AS rate FROM events GROUP BY traffic_source ORDER BY rate DESC LIMIT 1",
+  "rows": [
+   [
+    "Facebook",
+    26.945667054303506
+   ]
+  ]
+ },
+ "empty_01": {
+  "sql": "SELECT id FROM users WHERE age > 120",
+  "rows": []
+ },
+ "empty_02": {
+  "sql": "SELECT order_id FROM orders WHERE status = 'Refunded'",
+  "rows": []
+ },
+ "empty_03": {
+  "sql": "SELECT COUNT(*) FROM events WHERE created_at < '2015-01-01'",
+  "rows": [
+   [
+    0
+   ]
+  ]
+ },
+ "empty_04": {
+  "sql": "SELECT AVG(oi.sale_price) FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE p.category = 'Spacesuits'",
+  "rows": [
+   [
+    null
+   ]
+  ]
+ },
+ "empty_05": {
+  "sql": "SELECT id FROM products WHERE retail_price < 0",
+  "rows": []
+ },
+ "agg_01": {
+  "sql": "SELECT event_type FROM events GROUP BY event_type ORDER BY COUNT(*) DESC OFFSET 1 LIMIT 1",
+  "rows": [
+   [
+    "cart"
+   ]
+  ]
+ },
+ "agg_02": {
+  "sql": "SELECT status, AVG(num_of_item) FROM orders GROUP BY status",
+  "rows": [
+   [
+    "Complete",
+    1.4546469350003188
+   ],
+   [
+    "Shipped",
+    1.448758549112489
+   ],
+   [
+    "Processing",
+    1.4464938782000318
+   ],
+   [
+    "Returned",
+    1.4550678371907422
+   ],
+   [
+    "Cancelled",
+    1.4557472190875382
+   ]
+  ]
+ },
+ "agg_03": {
+  "sql": "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY age) FROM users",
+  "rows": [
+   [
+    41.0
+   ]
+  ]
+ },
+ "agg_04": {
+  "sql": "SELECT state, COUNT(*) FROM users GROUP BY state ORDER BY 2 DESC LIMIT 1",
+  "rows": [
+   [
+    "Guangdong",
+    5380
+   ]
+  ]
+ },
+ "agg_05": {
+  "sql": "SELECT COUNT(*)::numeric / COUNT(DISTINCT user_id) FROM orders",
+  "rows": [
+   [
+    1.5644645445005247
+   ]
+  ]
+ },
+ "agg_06": {
+  "sql": "SELECT COUNT(*) FROM (SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3) t",
+  "rows": [
+   [
+    4989
+   ]
+  ]
+ },
+ "agg_07": {
+  "sql": "SELECT p.brand, COUNT(DISTINCT oi.user_id) FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY p.brand ORDER BY 2 DESC LIMIT 3",
+  "rows": [
+   [
+    "Allegra K",
+    6003
+   ],
+   [
+    "Calvin Klein",
+    3199
+   ],
+   [
+    "Carhartt",
+    2551
+   ]
+  ]
+ },
+ "agg_08": {
+  "sql": "SELECT COUNT(*) FROM (SELECT user_id FROM orders GROUP BY user_id HAVING MIN(created_at) >= '2022-01-01' AND MIN(created_at) < '2023-01-01') t",
+  "rows": [
+   [
+    19587
+   ]
+  ]
+ },
+ "agg_09": {
+  "sql": "SELECT AVG(EXTRACT(EPOCH FROM (shipped_at - created_at)) / 86400.0) FROM orders WHERE shipped_at IS NOT NULL",
+  "rows": [
+   [
+    1.4962482047613854
+   ]
+  ]
+ },
+ "agg_10": {
+  "sql": "SELECT EXTRACT(MONTH FROM created_at) FROM orders GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1",
+  "rows": [
+   [
+    12.0
+   ]
+  ]
+ }
+}
